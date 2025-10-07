@@ -1,0 +1,4 @@
+[console_scripts]
+moyan = moyan.cli:main
+moyan-analyze = moyan.analyzer:main
+moyan-web = moyan.web:main

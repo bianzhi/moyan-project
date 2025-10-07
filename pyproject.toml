@@ -1,0 +1,107 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "moyan"
+version = "1.0.0"
+description = "墨岩缠论分析系统 - 基于CZSC的专业技术分析应用"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "CZSC Community", email = "czsc@example.com"}
+]
+keywords = ["缠论", "技术分析", "股票分析", "CZSC", "量化交易"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Financial and Insurance Industry",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Office/Business :: Financial :: Investment",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+]
+requires-python = ">=3.10"
+
+# 核心依赖
+dependencies = [
+    "czsc>=0.9.8",  # CZSC核心库
+    "pandas>=1.5.0",
+    "numpy>=1.21.0", 
+    "matplotlib>=3.5.0",
+    "yfinance>=0.2.0",
+    "requests>=2.28.0",
+    "loguru>=0.6.0",
+]
+
+# 可选依赖
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "black>=22.0.0",
+    "isort>=5.10.0",
+    "flake8>=5.0.0",
+    "mypy>=0.991",
+]
+
+web = [
+    "streamlit>=1.25.0",
+    "plotly>=5.15.0",
+    "dash>=2.10.0",
+]
+
+enhanced = [
+    "ta-lib>=0.4.0",
+    "mplfinance>=0.12.0",
+    "seaborn>=0.11.0",
+]
+
+all = [
+    "moyan[dev,web,enhanced]"
+]
+
+[project.urls]
+Homepage = "https://github.com/waditu/czsc"
+Repository = "https://github.com/waditu/czsc"
+Documentation = "https://czsc.readthedocs.io"
+"Bug Reports" = "https://github.com/waditu/czsc/issues"
+
+[project.scripts]
+moyan = "moyan.cli.main:cli"
+moyan-check-updates = "scripts.check_czsc_updates:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-dir]
+"" = "src"
+
+# 开发工具配置
+[tool.black]
+line-length = 100
+target-version = ['py310']
+
+[tool.isort]
+profile = "black"
+line_length = 100
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short --strict-markers"
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+]
