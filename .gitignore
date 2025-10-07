@@ -145,10 +145,16 @@ cython_debug/
 .streamlit/
 
 # 数据库文件
-*.db
-*.sqlite
-*.sqlite3
-a_stock_database.db
+# *.db  # 注释掉，保留基础数据库
+# *.sqlite
+# *.sqlite3
+# a_stock_database.db  # 注释掉，保留A股数据库
+
+# 但忽略其他可能的数据库文件
+cache.db
+temp.db
+user_*.db
+local_*.db
 
 # 日志文件
 *.log
