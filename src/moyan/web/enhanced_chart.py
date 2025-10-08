@@ -27,6 +27,15 @@ class EnhancedChartGenerator:
         
         print(f"Debug: 原始数据 {len(self.df)} 条，校验后数据 {len(self.trading_df)} 条")  # 调试输出
 
+    def _datetime_to_index(self, dt):
+        """将时间转换为数据索引位置"""
+        try:
+            return self.trading_df.index.get_loc(dt)
+        except KeyError:
+            # 如果找不到精确匹配，找最接近的
+            closest_idx = self.trading_df.index.get_indexer([dt], method='nearest')[0]
+            return closest_idx if closest_idx >= 0 else None
+
     def _validate_and_clean_data(self):
         """
         数据完整性校验和清理
@@ -187,13 +196,23 @@ class EnhancedChartGenerator:
         """添加成交量（使用过滤后的交易日数据）"""
         if 'Volume' in self.trading_df.columns and len(self.trading_df) > 0:
             x_data = self._get_x_data()
-            colors = ['red' if row['Close'] > row['Open'] else 'green' for _, row in self.trading_df.iterrows()]
+            colors = ['red' if row_data['Close'] > row_data['Open'] else 'green' for _, row_data in self.trading_df.iterrows()]
+            
+            # 创建悬停信息，显示时间和成交量
+            hover_text = []
+            for i, (idx, row_data) in enumerate(self.trading_df.iterrows()):
+                date_str = idx.strftime('%Y-%m-%d %H:%M') if self.kline_level in ['1h', '30m', '15m', '5m', '2m', '1m'] else idx.strftime('%Y-%m-%d')
+                hover_info = f"日期: {date_str}<br>成交量: {row_data['Volume']:,.0f}"
+                hover_text.append(hover_info)
+            
             fig.add_trace(go.Bar(
                 x=x_data,
                 y=self.trading_df['Volume'],
                 marker_color=colors,
                 name='成交量',
-                showlegend=False
+                showlegend=False,
+                hoverinfo='text',
+                hovertext=hover_text
             ), row=row, col=col)
 
     def _add_ma(self, fig, row, col, periods=[5, 20]):
@@ -223,27 +242,29 @@ class EnhancedChartGenerator:
         
         # 绘制顶分型（标记在K线顶部）
         if show_top and top_fractals:
-            top_dates = []
+            top_indices = []
             top_prices = []
             
             for fx in top_fractals:
                 if hasattr(fx, 'dt') and hasattr(fx, 'fx'):
-                    top_dates.append(fx.dt)
-                    top_prices.append(fx.fx)
+                    idx = self._datetime_to_index(fx.dt)
+                    if idx is not None:
+                        top_indices.append(idx)
+                        top_prices.append(fx.fx)
                     
-            print(f"Debug: 实际绘制的顶分型: {len(top_dates)}")  # 调试输出
+            print(f"Debug: 实际绘制的顶分型: {len(top_indices)}")  # 调试输出
             
-            if top_dates:
+            if top_indices:
                 # 标记位置稍微高于实际价格，避免与卖点重叠
                 top_positions = [price * 1.02 for price in top_prices]
                 
                 fig.add_trace(go.Scatter(
-                    x=top_dates,
+                    x=top_indices,
                     y=top_positions,
                     mode='markers',
                     marker=dict(symbol='triangle-down', size=10, color='red', line=dict(color='darkred', width=1)),
                     name='顶分型',
-                    text=['▼'] * len(top_dates) if show_labels else None,
+                    text=['▼'] * len(top_indices) if show_labels else None,
                     textposition="top center",
                     showlegend=True,
                     legendgroup='top_fractals'  # 顶分型图例组
@@ -251,27 +272,29 @@ class EnhancedChartGenerator:
             
         # 绘制底分型（标记在K线底部）
         if show_bottom and bottom_fractals:
-            bottom_dates = []
+            bottom_indices = []
             bottom_prices = []
             
             for fx in bottom_fractals:
                 if hasattr(fx, 'dt') and hasattr(fx, 'fx'):
-                    bottom_dates.append(fx.dt)
-                    bottom_prices.append(fx.fx)
+                    idx = self._datetime_to_index(fx.dt)
+                    if idx is not None:
+                        bottom_indices.append(idx)
+                        bottom_prices.append(fx.fx)
                     
-            print(f"Debug: 实际绘制的底分型: {len(bottom_dates)}")  # 调试输出
+            print(f"Debug: 实际绘制的底分型: {len(bottom_indices)}")  # 调试输出
             
-            if bottom_dates:
+            if bottom_indices:
                 # 标记位置稍微低于实际价格，避免与买点重叠
                 bottom_positions = [price * 0.98 for price in bottom_prices]
                 
                 fig.add_trace(go.Scatter(
-                    x=bottom_dates,
+                    x=bottom_indices,
                     y=bottom_positions,
                     mode='markers',
                     marker=dict(symbol='triangle-up', size=10, color='green', line=dict(color='darkgreen', width=1)),
                     name='底分型',
-                    text=['▲'] * len(bottom_dates) if show_labels else None,
+                    text=['▲'] * len(bottom_indices) if show_labels else None,
                     textposition="bottom center",
                     showlegend=True,
                     legendgroup='bottom_fractals'  # 底分型图例组
@@ -586,16 +609,30 @@ class EnhancedChartGenerator:
             signal = macd.ewm(span=9).mean()
             histogram = macd - signal
             
+            # 创建悬停信息
+            hover_text_macd = []
+            hover_text_signal = []
+            hover_text_hist = []
+            for i, (idx, row_data) in enumerate(self.trading_df.iterrows()):
+                date_str = idx.strftime('%Y-%m-%d %H:%M') if self.kline_level in ['1h', '30m', '15m', '5m', '2m', '1m'] else idx.strftime('%Y-%m-%d')
+                hover_text_macd.append(f"日期: {date_str}<br>MACD: {macd.iloc[i]:.4f}")
+                hover_text_signal.append(f"日期: {date_str}<br>Signal: {signal.iloc[i]:.4f}")
+                hover_text_hist.append(f"日期: {date_str}<br>Histogram: {histogram.iloc[i]:.4f}")
+            
             fig.add_trace(go.Scatter(
                 x=x_data, y=macd, 
                 mode='lines', name='MACD', 
-                line=dict(color='blue', width=1)
+                line=dict(color='blue', width=1),
+                hoverinfo='text',
+                hovertext=hover_text_macd
             ), row=row, col=col)
             
             fig.add_trace(go.Scatter(
                 x=x_data, y=signal, 
                 mode='lines', name='Signal', 
-                line=dict(color='orange', width=1)
+                line=dict(color='orange', width=1),
+                hoverinfo='text',
+                hovertext=hover_text_signal
             ), row=row, col=col)
             
             colors = ['red' if val >= 0 else 'green' for val in histogram]
@@ -603,7 +640,9 @@ class EnhancedChartGenerator:
                 x=x_data, y=histogram, 
                 name='Histogram', 
                 marker_color=colors, 
-                showlegend=False
+                showlegend=False,
+                hoverinfo='text',
+                hovertext=hover_text_hist
             ), row=row, col=col)
 
     def _add_rsi(self, fig, row, col):
@@ -617,10 +656,18 @@ class EnhancedChartGenerator:
             rs = gain / loss
             rsi = 100 - (100 / (1 + rs))
             
+            # 创建悬停信息
+            hover_text = []
+            for i, (idx, row_data) in enumerate(self.trading_df.iterrows()):
+                date_str = idx.strftime('%Y-%m-%d %H:%M') if self.kline_level in ['1h', '30m', '15m', '5m', '2m', '1m'] else idx.strftime('%Y-%m-%d')
+                hover_text.append(f"日期: {date_str}<br>RSI: {rsi.iloc[i]:.2f}")
+            
             fig.add_trace(go.Scatter(
                 x=x_data, y=rsi, 
                 mode='lines', name='RSI', 
-                line=dict(color='purple', width=1)
+                line=dict(color='purple', width=1),
+                hoverinfo='text',
+                hovertext=hover_text
             ), row=row, col=col)
             
             fig.add_hline(y=70, line_dash="dash", line_color="red", row=row, col=col)
