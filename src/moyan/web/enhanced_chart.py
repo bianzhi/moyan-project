@@ -140,13 +140,9 @@ class EnhancedChartGenerator:
                 # 可以选择填充缺失的时间点或标记异常
 
     def _get_x_data(self):
-        """获取优化的X轴数据，不显示日期，使用序号"""
-        if self.kline_level in ['1h', '30m', '15m', '5m', '2m', '1m']:
-            # 分钟级别数据：使用序号，避免日期显示
-            return list(range(len(self.trading_df)))
-        else:
-            # 日线及以上级别：也使用序号，去掉日期
-            return list(range(len(self.trading_df)))
+        """获取优化的X轴数据，显示月份标识"""
+        # 使用原始时间索引，但会在时间轴配置中控制显示格式
+        return self.trading_df.index
 
     def _add_candlestick(self, fig, row, col):
         """添加K线图（中国股市红涨绿跌配色，剔除非交易日）"""
@@ -743,17 +739,17 @@ class EnhancedChartGenerator:
             self._add_fractals(fig, 1, 1, 
                             show_top=display_options.get('show_top_fx'), 
                             show_bottom=display_options.get('show_bottom_fx'),
-                            show_labels=False)
+                            show_labels=True)
         
         # 笔独立控制
         if display_options.get('show_up_bi') or display_options.get('show_down_bi'):
             self._add_strokes(fig, 1, 1,
                             show_up=display_options.get('show_up_bi'),
                             show_down=display_options.get('show_down_bi'),
-                            show_labels=False)
+                            show_labels=True)
         
         if display_options.get('show_xd'):
-            self._add_segments(fig, 1, 1, show_labels=False)
+            self._add_segments(fig, 1, 1, show_labels=True)
         # 买卖点按类型独立控制
         buy_types = {}
         sell_types = {}
@@ -768,11 +764,11 @@ class EnhancedChartGenerator:
             self._add_buy_sell_points(fig, 1, 1,
                                     buy_types=buy_types,
                                     sell_types=sell_types,
-                                    show_labels=False)
+                                    show_labels=True)
         if display_options.get('show_divergence'):
             self._add_divergence(fig, 1, 1)
         if display_options.get('show_zs'):
-            self._add_pivots(fig, 1, 1, show_labels=False)
+            self._add_pivots(fig, 1, 1, show_labels=True)
         if display_options.get('show_boll'):
             self._add_bollinger_bands(fig, 1, 1)
 
@@ -819,47 +815,33 @@ class EnhancedChartGenerator:
             xaxis_rangeslider_visible=False,
         )
         
-        # 配置时间轴 - 不显示日期，使用序号
+        # 配置时间轴 - 显示月份标识
         if self.kline_level in ['1h', '30m', '15m', '5m', '2m', '1m']:
-            # 为分钟级别数据创建简洁的序号轴
-            data_count = len(self.trading_df)
-            
-            # 大幅减少标签数量，只显示关键序号点
-            if data_count <= 50:
-                tick_count = 5  # 最多5个标签
-            elif data_count <= 100:
-                tick_count = 6  # 最多6个标签
-            else:
-                tick_count = 8  # 最多8个标签，避免过密
-            
+            # 分钟级别数据：显示月份，避免时间间隙
             fig.update_xaxes(
-                type='linear',  # 使用数字序号
-                tickangle=0,  # 水平显示，更简洁
+                type='category',  # 使用category类型避免时间间隙
+                categoryorder='category ascending',
+                tickangle=0,  # 水平显示
                 showgrid=False,  # 去掉网格线
-                # 确保显示首尾和关键序号点
-                tickmode='array',
-                tickvals=[i * (data_count - 1) // (tick_count - 1) for i in range(tick_count)],
-                ticktext=[str(i * (data_count - 1) // (tick_count - 1)) for i in range(tick_count)],
-                tickfont=dict(size=10, color='#666666'),  # 淡化字体颜色
-                showline=True,
-                linewidth=1,
-                linecolor='#e0e0e0',
-                title_text="数据序号"
-            )
-        else:
-            # 日线及以上级别也使用序号
-            data_count = len(self.trading_df)
-            fig.update_xaxes(
-                type='linear',  # 使用数字序号
-                showgrid=False,  # 去掉网格线
-                # 简化序号标签
-                tickmode='linear',
-                nticks=8,  # 减少标签数量
+                # 简化时间标签显示
+                tickformat='%m月',  # 只显示月份
+                dtick="M1",  # 每月显示一个标签
                 tickfont=dict(size=10, color='#666666'),
                 showline=True,
                 linewidth=1,
-                linecolor='#e0e0e0',
-                title_text="数据序号"
+                linecolor='#e0e0e0'
+            )
+        else:
+            # 日线及以上级别显示月份
+            fig.update_xaxes(
+                showgrid=False,  # 去掉网格线
+                # 简化时间标签显示
+                tickformat='%m月',  # 只显示月份
+                dtick="M1",  # 每月显示一个标签
+                tickfont=dict(size=10, color='#666666'),
+                showline=True,
+                linewidth=1,
+                linecolor='#e0e0e0'
             )
         
         # 配置Y轴 - 简洁美观
