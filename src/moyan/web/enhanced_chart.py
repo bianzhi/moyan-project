@@ -44,29 +44,41 @@ class EnhancedChartGenerator:
         ), row=row, col=col)
 
     def _add_volume(self, fig, row, col):
-        """添加成交量"""
+        """添加成交量（剔除非交易日）"""
         if 'Volume' in self.df.columns:
-            colors = ['red' if row['Close'] > row['Open'] else 'green' for _, row in self.df.iterrows()]
-            fig.add_trace(go.Bar(
-                x=self.df.index,
-                y=self.df['Volume'],
-                marker_color=colors,
-                name='成交量',
-                showlegend=False
-            ), row=row, col=col)
+            # 过滤掉成交量为0或NaN的日期（非交易日）
+            volume_data = self.df[self.df['Volume'] > 0].copy()
+            
+            if len(volume_data) > 0:
+                colors = ['red' if row['Close'] > row['Open'] else 'green' for _, row in volume_data.iterrows()]
+                fig.add_trace(go.Bar(
+                    x=volume_data.index,
+                    y=volume_data['Volume'],
+                    marker_color=colors,
+                    name='成交量',
+                    showlegend=False
+                ), row=row, col=col)
 
     def _add_ma(self, fig, row, col, periods=[5, 20]):
-        """添加移动平均线"""
-        for p in periods:
-            ma = self.df['Close'].rolling(window=p).mean()
-            fig.add_trace(go.Scatter(
-                x=self.df.index,
-                y=ma,
-                mode='lines',
-                name=f'MA{p}',
-                line=dict(width=1),
-                showlegend=True
-            ), row=row, col=col)
+        """添加移动平均线（剔除非交易日）"""
+        # 过滤掉成交量为0或NaN的日期（非交易日）
+        if 'Volume' in self.df.columns:
+            trading_data = self.df[self.df['Volume'] > 0].copy()
+        else:
+            # 如果没有成交量数据，使用价格变化来判断交易日
+            trading_data = self.df.dropna(subset=['Close']).copy()
+        
+        if len(trading_data) > 0:
+            for p in periods:
+                ma = trading_data['Close'].rolling(window=p).mean()
+                fig.add_trace(go.Scatter(
+                    x=trading_data.index,
+                    y=ma,
+                    mode='lines',
+                    name=f'MA{p}',
+                    line=dict(width=1),
+                    showlegend=True
+                ), row=row, col=col)
 
     def _add_fractals(self, fig, row, col, show_top=True, show_bottom=True, show_labels=False):
         """添加分型标记（使用真实CZSC数据，支持独立控制）"""
@@ -433,77 +445,101 @@ class EnhancedChartGenerator:
                 ), row=row, col=col)
 
     def _add_macd(self, fig, row, col):
-        """添加MACD指标"""
-        # 简化的MACD计算
-        ema12 = self.df['Close'].ewm(span=12).mean()
-        ema26 = self.df['Close'].ewm(span=26).mean()
-        macd = ema12 - ema26
-        signal = macd.ewm(span=9).mean()
-        histogram = macd - signal
+        """添加MACD指标（剔除非交易日）"""
+        # 过滤掉成交量为0或NaN的日期（非交易日）
+        if 'Volume' in self.df.columns:
+            trading_data = self.df[self.df['Volume'] > 0].copy()
+        else:
+            # 如果没有成交量数据，使用价格变化来判断交易日
+            trading_data = self.df.dropna(subset=['Close']).copy()
         
-        fig.add_trace(go.Scatter(
-            x=self.df.index, y=macd, 
-            mode='lines', name='MACD', 
-            line=dict(color='blue', width=1)
-        ), row=row, col=col)
-        
-        fig.add_trace(go.Scatter(
-            x=self.df.index, y=signal, 
-            mode='lines', name='Signal', 
-            line=dict(color='orange', width=1)
-        ), row=row, col=col)
-        
-        colors = ['red' if val >= 0 else 'green' for val in histogram]
-        fig.add_trace(go.Bar(
-            x=self.df.index, y=histogram, 
-            name='Histogram', 
-            marker_color=colors, 
-            showlegend=False
-        ), row=row, col=col)
+        if len(trading_data) > 0:
+            # 简化的MACD计算
+            ema12 = trading_data['Close'].ewm(span=12).mean()
+            ema26 = trading_data['Close'].ewm(span=26).mean()
+            macd = ema12 - ema26
+            signal = macd.ewm(span=9).mean()
+            histogram = macd - signal
+            
+            fig.add_trace(go.Scatter(
+                x=trading_data.index, y=macd, 
+                mode='lines', name='MACD', 
+                line=dict(color='blue', width=1)
+            ), row=row, col=col)
+            
+            fig.add_trace(go.Scatter(
+                x=trading_data.index, y=signal, 
+                mode='lines', name='Signal', 
+                line=dict(color='orange', width=1)
+            ), row=row, col=col)
+            
+            colors = ['red' if val >= 0 else 'green' for val in histogram]
+            fig.add_trace(go.Bar(
+                x=trading_data.index, y=histogram, 
+                name='Histogram', 
+                marker_color=colors, 
+                showlegend=False
+            ), row=row, col=col)
 
     def _add_rsi(self, fig, row, col):
-        """添加RSI指标"""
-        # 简化的RSI计算
-        delta = self.df['Close'].diff()
-        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-        rs = gain / loss
-        rsi = 100 - (100 / (1 + rs))
+        """添加RSI指标（剔除非交易日）"""
+        # 过滤掉成交量为0或NaN的日期（非交易日）
+        if 'Volume' in self.df.columns:
+            trading_data = self.df[self.df['Volume'] > 0].copy()
+        else:
+            # 如果没有成交量数据，使用价格变化来判断交易日
+            trading_data = self.df.dropna(subset=['Close']).copy()
         
-        fig.add_trace(go.Scatter(
-            x=self.df.index, y=rsi, 
-            mode='lines', name='RSI', 
-            line=dict(color='purple', width=1)
-        ), row=row, col=col)
-        
-        fig.add_hline(y=70, line_dash="dash", line_color="red", row=row, col=col)
-        fig.add_hline(y=30, line_dash="dash", line_color="green", row=row, col=col)
+        if len(trading_data) > 0:
+            # 简化的RSI计算
+            delta = trading_data['Close'].diff()
+            gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+            loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+            rs = gain / loss
+            rsi = 100 - (100 / (1 + rs))
+            
+            fig.add_trace(go.Scatter(
+                x=trading_data.index, y=rsi, 
+                mode='lines', name='RSI', 
+                line=dict(color='purple', width=1)
+            ), row=row, col=col)
+            
+            fig.add_hline(y=70, line_dash="dash", line_color="red", row=row, col=col)
+            fig.add_hline(y=30, line_dash="dash", line_color="green", row=row, col=col)
 
     def _add_bollinger_bands(self, fig, row, col):
-        """添加布林带"""
-        window = 20
-        rolling_mean = self.df['Close'].rolling(window=window).mean()
-        rolling_std = self.df['Close'].rolling(window=window).std()
-        upper_band = rolling_mean + (rolling_std * 2)
-        lower_band = rolling_mean - (rolling_std * 2)
+        """添加布林带（剔除非交易日）"""
+        # 过滤掉成交量为0或NaN的日期（非交易日）
+        if 'Volume' in self.df.columns:
+            trading_data = self.df[self.df['Volume'] > 0].copy()
+        else:
+            # 如果没有成交量数据，使用价格变化来判断交易日
+            trading_data = self.df.dropna(subset=['Close']).copy()
         
-        fig.add_trace(go.Scatter(
-            x=self.df.index, y=upper_band, 
-            mode='lines', name='Upper Band', 
-            line=dict(color='gray', width=1, dash='dot')
-        ), row=row, col=col)
-        
-        fig.add_trace(go.Scatter(
-            x=self.df.index, y=rolling_mean, 
-            mode='lines', name='Middle Band', 
-            line=dict(color='blue', width=1)
-        ), row=row, col=col)
-        
-        fig.add_trace(go.Scatter(
-            x=self.df.index, y=lower_band, 
-            mode='lines', name='Lower Band', 
-            line=dict(color='gray', width=1, dash='dot')
-        ), row=row, col=col)
+        if len(trading_data) > 0:
+            window = 20
+            rolling_mean = trading_data['Close'].rolling(window=window).mean()
+            rolling_std = trading_data['Close'].rolling(window=window).std()
+            upper_band = rolling_mean + (rolling_std * 2)
+            lower_band = rolling_mean - (rolling_std * 2)
+            
+            fig.add_trace(go.Scatter(
+                x=trading_data.index, y=upper_band, 
+                mode='lines', name='Upper Band', 
+                line=dict(color='gray', width=1, dash='dot')
+            ), row=row, col=col)
+            
+            fig.add_trace(go.Scatter(
+                x=trading_data.index, y=rolling_mean, 
+                mode='lines', name='Middle Band', 
+                line=dict(color='blue', width=1)
+            ), row=row, col=col)
+            
+            fig.add_trace(go.Scatter(
+                x=trading_data.index, y=lower_band, 
+                mode='lines', name='Lower Band', 
+                line=dict(color='gray', width=1, dash='dot')
+            ), row=row, col=col)
 
     def _add_statistics_panels(self, fig):
         """添加统计面板（买卖条件统计、背驰统计、中枢统计）"""
