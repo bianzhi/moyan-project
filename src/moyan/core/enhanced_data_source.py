@@ -555,6 +555,8 @@ class SinaDataSource(DataSourceBase):
             clean_symbol = symbol.split('.')[0]
             if clean_symbol.startswith('6'):
                 sina_symbol = f"sh{clean_symbol}"  # 上海
+            elif clean_symbol.startswith('688'):
+                sina_symbol = f"sh{clean_symbol}"  # 科创板
             else:
                 sina_symbol = f"sz{clean_symbol}"  # 深圳
             
@@ -568,25 +570,35 @@ class SinaDataSource(DataSourceBase):
             
             scale = scale_map.get(kline_level, '30')
             
-            print(f"🔍 sina获取数据: {sina_symbol}, K线级别: {kline_level}")
+            print(f"🔍 sina获取数据: {sina_symbol}, K线级别: {kline_level}, 时间范围: {start_date} - {end_date}")
             
-            # 计算需要的数据量
-            start_date = kwargs.get('start', '2024-01-01')
-            end_date = kwargs.get('end', datetime.now().strftime('%Y-%m-%d'))
+            # 根据K线级别计算理论数据量
+            if kline_level == '1h':
+                # 1小时线：每天4小时交易时间
+                expected_count = days_diff * 4 + 100  # 加100条缓冲
+            elif kline_level == '30m':
+                # 30分钟线：每天8条
+                expected_count = days_diff * 8 + 200
+            elif kline_level == '15m':
+                # 15分钟线：每天16条
+                expected_count = days_diff * 16 + 400
+            elif kline_level == '5m':
+                # 5分钟线：每天48条
+                expected_count = days_diff * 48 + 500
+            else:
+                expected_count = 1000
             
-            from datetime import datetime as dt
-            start_dt = dt.strptime(start_date, '%Y-%m-%d')
-            end_dt = dt.strptime(end_date, '%Y-%m-%d')
-            days_diff = (end_dt - start_dt).days
+            # 限制最大数据量，避免请求过大
+            datalen = min(expected_count, 3000)
+            print(f"🔢 预计需要{expected_count}条数据，实际请求{datalen}条")
             
-            # 新浪API通常返回最近的数据，我们尝试获取足够的数据
             # 构造请求URL
             url = f"https://quotes.sina.cn/cn/api/json_v2.php/CN_MarketDataService.getKLineData"
             params = {
                 'symbol': sina_symbol,
                 'scale': scale,
                 'ma': 'no',
-                'datalen': min(days_diff * 4 + 500, 2000)  # 限制最大2000条
+                'datalen': datalen
             }
             
             headers = {
@@ -632,6 +644,16 @@ class SinaDataSource(DataSourceBase):
             df = df.set_index('datetime')
             df = df.sort_index()  # 按时间排序
             
+            # 过滤时间范围
+            try:
+                start_dt = pd.to_datetime(start_date)
+                end_dt = pd.to_datetime(end_date) + pd.Timedelta(days=1)  # 包含结束日期
+                df_filtered = df[(df.index >= start_dt) & (df.index < end_dt)]
+                print(f"📅 时间过滤: {len(df)} -> {len(df_filtered)} 条数据")
+                df = df_filtered
+            except Exception as e:
+                print(f"⚠️ 时间过滤失败，使用全部数据: {e}")
+            
             # 标准化列名
             result = pd.DataFrame({
                 'Open': df['open'],
@@ -641,7 +663,7 @@ class SinaDataSource(DataSourceBase):
                 'Volume': df['volume']
             })
             
-            print(f"✅ sina处理后数据: {result.shape}")
+            print(f"✅ sina最终数据: {result.shape}, 时间范围: {result.index.min()} - {result.index.max()}")
             return result
             
         except Exception as e:
