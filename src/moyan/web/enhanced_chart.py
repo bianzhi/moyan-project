@@ -212,7 +212,7 @@ class EnhancedChartGenerator:
                 hovertext=hover_text
             ), row=row, col=col)
 
-    def _add_ma(self, fig, row, col, periods=[5, 20]):
+    def _add_ma(self, fig, row, col, periods=[5, 10]):
         """添加移动平均线（使用过滤后的交易日数据）"""
         if len(self.trading_df) > 0:
             x_data = self._get_x_data()
@@ -263,7 +263,7 @@ class EnhancedChartGenerator:
                     mode='markers',
                     marker=dict(symbol='triangle-down', size=10, color='red', line=dict(color='darkred', width=1)),
                     name='顶分型',
-                    text=['▼'] * len(top_indices) if show_labels else None,
+                    text=None,  # 顶分型标识已移除（根据用户要求）
                     textposition="top center",
                     showlegend=True,
                     hoverinfo='skip',  # 不显示悬停信息
@@ -294,7 +294,7 @@ class EnhancedChartGenerator:
                     mode='markers',
                     marker=dict(symbol='triangle-up', size=10, color='green', line=dict(color='darkgreen', width=1)),
                     name='底分型',
-                    text=['▲'] * len(bottom_indices) if show_labels else None,
+                    text=None,  # 底分型标识已移除（根据用户要求）
                     textposition="bottom center",
                     showlegend=True,
                     hoverinfo='skip',  # 不显示悬停信息
@@ -325,7 +325,7 @@ class EnhancedChartGenerator:
                             line=dict(color='blue', width=3),
                             name='向上笔' if not up_legend_shown else None,
                             showlegend=not up_legend_shown,
-                            text=f'向上笔{i+1}' if show_labels else None,
+                            text=None,  # 向上笔标识已移除（根据用户要求）
                             textposition="middle center",
                             hoverinfo='skip',  # 不显示悬停信息
                             legendgroup='up_strokes'
@@ -349,7 +349,7 @@ class EnhancedChartGenerator:
                             line=dict(color='orange', width=3),
                             name='向下笔' if not down_legend_shown else None,
                             showlegend=not down_legend_shown,
-                            text=f'向下笔{i+1}' if show_labels else None,
+                            text=None,  # 向下笔标识已移除（根据用户要求）
                             textposition="middle center",
                             hoverinfo='skip',  # 不显示悬停信息
                             legendgroup='down_strokes'
@@ -392,19 +392,19 @@ class EnhancedChartGenerator:
                             marker=dict(size=8, color='purple', symbol='diamond'),
                             name='线段' if i == 0 else None,
                             showlegend=(i == 0),
-                            text=f'线段{i+1}' if show_labels else None,
+                            text=None,  # 线段标识已移除（根据用户要求）
                             textposition="middle center",
                             hoverinfo='skip',  # 不显示悬停信息
                             legendgroup='segments'  # 线段图例组
                         ), row=row, col=col)
                         
-                        # 如果显示标注，添加线段编号
+                        # 恢复线段标签显示，但移除文字标识（根据用户要求）
                         if show_labels:
                             mid_x = start_idx + (end_idx - start_idx) / 2
                             mid_y = (start_point.fx + end_point.fx) / 2
                             fig.add_annotation(
                                 x=mid_x, y=mid_y,
-                                text=f"XD{i+1}",
+                                text="",  # 移除XD1文字，保留标记位置
                                 showarrow=False,
                                 font=dict(size=10, color="purple"),
                                 bgcolor="white",
@@ -463,7 +463,7 @@ class EnhancedChartGenerator:
                             marker=dict(symbol=symbol, size=12, color=color, 
                                        line=dict(color='darkgreen', width=2)),
                             name=type_name if show_legend else None,
-                            text=[type_name.replace('买点', 'B')] if show_labels else None,
+                            text=None,  # 买点标识已移除（根据用户要求）
                             textposition="bottom center",
                             showlegend=show_legend,
                             hoverinfo='skip',  # 不显示悬停信息
@@ -507,7 +507,7 @@ class EnhancedChartGenerator:
                             marker=dict(symbol=symbol, size=12, color=color,
                                        line=dict(color='darkred', width=2)),
                             name=type_name if show_legend else None,
-                            text=[type_name.replace('卖点', 'S')] if show_labels else None,
+                            text=None,  # 卖点标识已移除（根据用户要求）
                             textposition="top center",
                             showlegend=show_legend,
                             hoverinfo='skip',  # 不显示悬停信息
@@ -544,7 +544,7 @@ class EnhancedChartGenerator:
                     mode='markers',
                     marker=dict(symbol='x', size=16, color='red', line=dict(width=3)),
                     name='顶背驰',
-                    text=['顶背驰'] * len(top_indices),
+                    text=None,  # 顶背驰标识已移除（根据用户要求）
                     textposition="top center",
                     showlegend=True,
                     hoverinfo='skip',  # 不显示悬停信息
@@ -570,7 +570,7 @@ class EnhancedChartGenerator:
                     mode='markers',
                     marker=dict(symbol='x', size=16, color='green', line=dict(width=3)),
                     name='底背驰',
-                    text=['底背驰'] * len(bottom_indices),
+                    text=None,  # 底背驰标识已移除（根据用户要求）
                     textposition="bottom center",
                     showlegend=True,
                     hoverinfo='skip',  # 不显示悬停信息
@@ -619,12 +619,12 @@ class EnhancedChartGenerator:
                 #     row=row, col=col
                 # )
                 
-                # 添加中枢标签
+                # 恢复中枢标签显示，但移除文字标识（根据用户要求）
                 if show_labels:
                     fig.add_annotation(
                         x=start_idx + (end_idx - start_idx) / 2,
                         y=pivot['center'],
-                        text=f"ZS{i+1}",
+                        text="",  # 移除ZS1文字，保留标记位置
                         showarrow=False,
                         font=dict(size=10, color="white"),
                         bgcolor="purple",
@@ -983,13 +983,13 @@ class EnhancedChartGenerator:
             linewidth=1,
             linecolor='#e0e0e0',
             range=[0, data_count - 1],
-            # 实用的十字线配置
+            # 优化的十字虚线光标配置
             showspikes=True,
-            spikecolor="rgba(100,100,100,0.7)",  # 适中的灰色
+            spikecolor="rgba(120,120,120,0.9)",  # 更清晰的灰色
             spikesnap="cursor",
             spikemode="across",  # 跨图显示
-            spikethickness=1,  # 适中粗细
-            spikedash="dash",  # 虚线更专业
+            spikethickness=2,  # 稍微粗一点，更明显
+            spikedash="dash",  # 虚线样式
             matches='x',
             row=[1, 2, 3]  # 只应用于前三个子图
         )
@@ -1011,16 +1011,16 @@ class EnhancedChartGenerator:
             linewidth=1,
             linecolor='#e0e0e0',
             tickfont=dict(size=10, color='#666666'),
-            # 实用的十字线配置
+            # 优化的十字虚线光标配置
             showspikes=True,
-            spikecolor="rgba(100,100,100,0.7)",  # 适中的灰色
+            spikecolor="rgba(120,120,120,0.9)",  # 更清晰的灰色
             spikesnap="cursor",
             spikemode="across",  # 跨图显示
-            spikethickness=1,  # 适中粗细
-            spikedash="dash"  # 虚线更专业
+            spikethickness=2,  # 稍微粗一点，更明显
+            spikedash="dash"  # 虚线样式
         )
         fig.add_annotation(
-            text="📊 使用说明: 将鼠标悬停在任意位置，统一显示所有图表的对应数据 | 虚线十字光标辅助定位",
+            text="📊 使用说明: 将鼠标悬停在任意位置，统一显示所有图表的对应数据 | 十字虚线光标精确定位",
             xref="paper", yref="paper",
             x=0.01, y=-0.05,
             showarrow=False,

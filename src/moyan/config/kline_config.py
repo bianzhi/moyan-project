@@ -11,30 +11,36 @@ KLINE_LEVELS = {
         'interval': '15m',
         'yfinance_interval': '15m',
         'default_days': 30,  # 默认获取30天数据
-        'max_days': 60,      # 最大60天
+        'max_days': 180,     # 实际最大180天（考虑数据源限制）
+        'recommended_days': 90,  # 推荐90天以保证数据完整性
         'description': '15分钟K线，适合短线交易',
         'min_bars': 50,      # 最少K线数量
         'recommended_bars': 200,  # 推荐K线数量
+        'data_warning': '15分钟级别数据建议不超过180天，以保证数据完整性'
     },
     '30m': {
         'name': '30分钟线', 
         'interval': '30m',
         'yfinance_interval': '30m',
         'default_days': 60,  # 默认获取60天数据
-        'max_days': 120,     # 最大120天
+        'max_days': 365,     # 实际最大365天
+        'recommended_days': 180,  # 推荐180天
         'description': '30分钟K线，适合日内交易',
         'min_bars': 50,
         'recommended_bars': 150,
+        'data_warning': '30分钟级别数据建议不超过365天，以保证数据完整性'
     },
     '1h': {
         'name': '1小时线',
         'interval': '1h', 
         'yfinance_interval': '1h',
         'default_days': 120, # 默认获取120天数据
-        'max_days': 240,     # 最大240天
+        'max_days': 1000,    # 实际最大1000天（基于Eastmoney限制）
+        'recommended_days': 365,  # 推荐365天
         'description': '1小时K线，适合短中线交易',
         'min_bars': 50,
         'recommended_bars': 120,
+        'data_warning': '1小时级别数据建议不超过1000天，以保证数据完整性'
     },
     '1d': {
         'name': '日线',

@@ -312,7 +312,12 @@ class BaostockDataSource(DataSourceBase):
                     adjustflag="3"  # 不复权
                 )
             
-            if rs.error_code != '0':
+            # 检查查询结果
+            if rs is None:
+                print("❌ baostock查询返回None")
+                return None
+                
+            if hasattr(rs, 'error_code') and rs.error_code != '0':
                 print(f"❌ baostock查询失败: {rs.error_msg}")
                 self.bs.logout()
                 return None
@@ -429,24 +434,29 @@ class EastmoneyDataSource(DataSourceBase):
             end_dt = dt.strptime(end_date, '%Y-%m-%d')
             days_diff = (end_dt - start_dt).days
             
-            # 根据K线级别估算需要的数据条数
+            # 根据K线级别估算需要的数据条数，使用最大可能的限制
             if kline_level == '1h':
-                # 1小时线：每天约8条（交易时间4小时），加上缓冲
-                estimated_bars = days_diff * 8 + 500
+                # 1小时线：每天约4条，使用最大限制
+                estimated_bars = days_diff * 4 + 500
+                max_limit = 15000  # Eastmoney可以支持更大的请求量
             elif kline_level == '30m':
-                # 30分钟线：每天约16条，加上缓冲
-                estimated_bars = days_diff * 16 + 1000
+                # 30分钟线：每天约8条
+                estimated_bars = days_diff * 8 + 1000
+                max_limit = 10000  # 提高限制
             elif kline_level == '15m':
-                # 15分钟线：每天约32条，加上缓冲
-                estimated_bars = days_diff * 32 + 2000
+                # 15分钟线：每天约16条
+                estimated_bars = days_diff * 16 + 2000
+                max_limit = 10000  # 提高限制
             else:
-                # 5分钟线：每天约96条，加上缓冲
-                estimated_bars = days_diff * 96 + 5000
+                # 5分钟线：每天约48条
+                estimated_bars = days_diff * 48 + 5000
+                max_limit = 10000  # 提高限制
             
-            # 限制最大数据条数，避免请求过大
-            lmt = min(estimated_bars, 10000)
+            lmt = min(estimated_bars, max_limit)
             
-            print(f"🔍 eastmoney估算需要数据: {estimated_bars}条，实际请求: {lmt}条")
+            # 记录请求信息，便于调试
+            print(f"🔍 eastmoney估算需要数据: {estimated_bars}条，实际请求: {lmt}条（最大限制{max_limit}）")
+            print(f"📊 时间跨度{days_diff}天，{kline_level}级别理论需要{days_diff * {'1h':4,'30m':8,'15m':16,'5m':48}.get(kline_level,4)}条数据")
             
             # 构造请求URL
             url = f"http://push2his.eastmoney.com/api/qt/stock/kline/get"
@@ -546,8 +556,8 @@ class SinaDataSource(DataSourceBase):
             # 解析参数
             kline_level = kwargs.get('kline_level', '1d')
             
-            # 只支持分钟级别数据
-            if kline_level not in ['5m', '15m', '30m', '1h']:
+            # 支持日线和分钟级别数据
+            if kline_level not in ['1d', '5m', '15m', '30m', '1h']:
                 print(f"⚠️ sina暂不支持{kline_level}级别数据")
                 return None
             
@@ -562,6 +572,7 @@ class SinaDataSource(DataSourceBase):
             
             # 频率映射
             scale_map = {
+                '1d': '240',   # 240分钟 = 1天
                 '5m': '5',
                 '15m': '15', 
                 '30m': '30',
@@ -570,27 +581,49 @@ class SinaDataSource(DataSourceBase):
             
             scale = scale_map.get(kline_level, '30')
             
+            # 解析时间参数
+            start_date = kwargs.get('start', '2024-01-01')
+            end_date = kwargs.get('end', datetime.now().strftime('%Y-%m-%d'))
+            
+            # 计算时间差用于数据量估算
+            from datetime import datetime as dt
+            start_dt = dt.strptime(start_date, '%Y-%m-%d')
+            end_dt = dt.strptime(end_date, '%Y-%m-%d')
+            days_diff = (end_dt - start_dt).days
+            
             print(f"🔍 sina获取数据: {sina_symbol}, K线级别: {kline_level}, 时间范围: {start_date} - {end_date}")
             
-            # 根据K线级别计算理论数据量
-            if kline_level == '1h':
-                # 1小时线：每天4小时交易时间
-                expected_count = days_diff * 4 + 100  # 加100条缓冲
+            # 根据K线级别计算理论数据量，统一使用1500条限制（实测sina最优值）
+            if kline_level == '1d':
+                # 日线：1500条可覆盖约6年数据
+                expected_count = days_diff + 100
+                max_limit = 1500  # sina日线最大1500条
+            elif kline_level == '1h':
+                # 1小时线：1500条可覆盖约1年数据
+                expected_count = days_diff * 4 + 500
+                max_limit = 1500  # sina 1h最大1500条
             elif kline_level == '30m':
-                # 30分钟线：每天8条
-                expected_count = days_diff * 8 + 200
+                # 30分钟线：1500条可覆盖约9个月
+                expected_count = days_diff * 8 + 400
+                max_limit = 1500  # sina 30m最大1500条
             elif kline_level == '15m':
-                # 15分钟线：每天16条
-                expected_count = days_diff * 16 + 400
+                # 15分钟线：1500条可覆盖约4个月
+                expected_count = days_diff * 16 + 800
+                max_limit = 1500  # sina 15m最大1500条
             elif kline_level == '5m':
-                # 5分钟线：每天48条
-                expected_count = days_diff * 48 + 500
+                # 5分钟线：保持1000条限制（短期分析够用）
+                expected_count = days_diff * 48 + 1000
+                max_limit = 1000  # 5分钟数据通常用于短期分析
             else:
                 expected_count = 1000
+                max_limit = 1500
             
-            # 限制最大数据量，避免请求过大
-            datalen = min(expected_count, 3000)
-            print(f"🔢 预计需要{expected_count}条数据，实际请求{datalen}条")
+            datalen = min(expected_count, max_limit)
+            
+            # 记录请求信息，便于调试
+            print(f"🔢 预计需要{expected_count}条数据，实际请求{datalen}条（最大限制{max_limit}）")
+            if kline_level != '1d':
+                print(f"📊 时间跨度{days_diff}天，{kline_level}级别理论需要{days_diff * {'1h':4,'30m':8,'15m':16,'5m':48}.get(kline_level,4)}条数据")
             
             # 构造请求URL
             url = f"https://quotes.sina.cn/cn/api/json_v2.php/CN_MarketDataService.getKLineData"
@@ -861,10 +894,10 @@ class MultiDataSourceManager:
     
     def _get_ordered_sources_by_kline_level(self, kline_level: str) -> List:
         """根据K线级别返回优先级排序的数据源列表"""
-        # 分钟级别数据：优先使用支持分钟级别的数据源
+        # 基于实测结果，sina在日线和分钟级别都表现优异
         if kline_level in ['15m', '30m', '1h', '5m', '2m', '1m']:
             print(f"🔄 检测到分钟级别数据({kline_level})，调整数据源优先级：sina > baostock > eastmoney > yfinance > akshare")
-            # 重新排序：支持分钟级别的数据源优先
+            # 重新排序：sina优先（支持1500条数据）
             minute_sources = []
             other_sources = []
             
@@ -878,9 +911,21 @@ class MultiDataSourceManager:
             minute_sources.sort(key=lambda x: x.priority)
             
             return minute_sources + other_sources
+        elif kline_level in ['1d']:
+            # 日线数据：sina可获取6年数据(1500条)，优于akshare的1年数据(244条)
+            print(f"🔄 检测到日线级别数据({kline_level})，调整数据源优先级：sina > akshare > baostock > yfinance > eastmoney")
+            # 重新排序：sina优先
+            ordered_sources = []
+            source_priority = {'sina': 1, 'akshare': 2, 'baostock': 3, 'yfinance': 4, 'eastmoney': 5}
+            
+            # 按新的优先级排序
+            available_sources = [(ds, source_priority.get(ds.name, 99)) for ds in self.data_sources if ds.available]
+            available_sources.sort(key=lambda x: x[1])
+            
+            return [ds for ds, _ in available_sources]
         else:
-            # 日线、周线、月线：akshare优先（更稳定，不限流）
-            print(f"🔄 检测到日线级别数据({kline_level})，使用默认优先级：akshare > sina > baostock > tushare > yfinance")
+            # 周线、月线等：sina不支持，使用akshare优先（实测akshare表现良好）
+            print(f"🔄 检测到周线/月线级别数据({kline_level})，使用默认优先级：akshare > sina > baostock > yfinance > eastmoney")
             return sorted(self.data_sources, key=lambda x: x.priority)
     
     def _format_symbol(self, stock_code: str) -> str:
