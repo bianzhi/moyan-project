@@ -907,19 +907,36 @@ class EnhancedChartGenerator:
             margin=dict(t=80, b=120, l=60, r=60),  # 增加底部边距以容纳图例说明
             font=dict(size=10),
             title_font_size=16,
-            hovermode="x unified",
+            hovermode="x unified",  # 统一悬停模式，所有子图同步显示
             # 去掉范围选择器，保持专业外观
             xaxis_rangeslider_visible=False,
-            # 添加十字线配置
+            # 优化拖拽和光标交互
             dragmode='pan',  # 默认拖拽模式
+            # 增强光标交互体验
+            hoverdistance=100,  # 增加悬停检测距离
+            spikedistance=1000,  # 增加十字线检测距离
         )
         
-        # 为所有子图添加十字线配置
+        # 为所有子图添加统一光标配置
         # 注意：Candlestick不支持connectgaps属性，只对line traces有效
         fig.update_traces(
             selector=dict(type='scatter'),
             line=dict(width=1),
-            connectgaps=False
+            connectgaps=False,
+            # 增强悬停效果
+            hovertemplate='<extra></extra>%{hovertext}',  # 简化悬停框
+        )
+        
+        # 为K线图添加特殊的悬停配置
+        fig.update_traces(
+            selector=dict(type='candlestick'),
+            hovertemplate='<extra></extra>%{hovertext}',  # 简化悬停框
+        )
+        
+        # 为柱状图添加特殊的悬停配置
+        fig.update_traces(
+            selector=dict(type='bar'),
+            hovertemplate='<extra></extra>%{hovertext}',  # 简化悬停框
         )
         
         # 配置时间轴 - 使用序号避免间隙，但显示月份标识
@@ -947,7 +964,7 @@ class EnhancedChartGenerator:
             month_positions.append(data_count - 1)
             month_labels.append(time_indices[-1].strftime('%m月'))
         
-        # 配置X轴 - 确保所有子图完全对齐
+        # 配置X轴 - 确保所有子图完全对齐，增强光标效果
         fig.update_xaxes(
             type='linear',  # 使用数字序号
             tickangle=0,  # 水平显示
@@ -961,31 +978,31 @@ class EnhancedChartGenerator:
             linecolor='#e0e0e0',
             # 强制设置相同的X轴范围
             range=[0, data_count - 1],
-            # 十字线配置
+            # 增强的十字线配置 - 垂直线
             showspikes=True,  # 显示垂直十字线
-            spikecolor="gray",
-            spikesnap="cursor",
+            spikecolor="rgba(0,0,0,0.6)",  # 更明显的颜色
+            spikesnap="cursor",  # 跟随光标
             spikemode="across",  # 十字线穿过所有子图
-            spikethickness=1,
-            spikedash="solid",
+            spikethickness=2,  # 增加线条粗细
+            spikedash="solid",  # 实线
             # 确保所有子图X轴同步
             matches='x'
         )
         
-        # 配置Y轴 - 简洁美观
+        # 配置Y轴 - 增强光标效果
         fig.update_yaxes(
             showgrid=False,  # 去掉网格线
             showline=True,
             linewidth=1,
             linecolor='#e0e0e0',
             tickfont=dict(size=10, color='#666666'),
-            # 十字线配置
+            # 增强的十字线配置 - 水平线
             showspikes=True,  # 显示水平十字线
-            spikecolor="gray", 
-            spikesnap="cursor",
+            spikecolor="rgba(0,0,0,0.6)",  # 更明显的颜色
+            spikesnap="cursor",  # 跟随光标
             spikemode="across",  # 十字线穿过所有子图
-            spikethickness=1,
-            spikedash="solid"
+            spikethickness=2,  # 增加线条粗细
+            spikedash="solid"  # 实线
         )
         fig.add_annotation(
             text="缠论技术分析图例说明:",
