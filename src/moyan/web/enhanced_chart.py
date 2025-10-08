@@ -312,36 +312,46 @@ class EnhancedChartGenerator:
             up_legend_shown = False
             for i, stroke in enumerate(up_strokes):
                 if hasattr(stroke, 'fx_a') and hasattr(stroke, 'fx_b'):
-                    fig.add_trace(go.Scatter(
-                        x=[stroke.fx_a.dt, stroke.fx_b.dt],
-                        y=[stroke.fx_a.fx, stroke.fx_b.fx],
-                        mode='lines',
-                        line=dict(color='blue', width=3),
-                        name='向上笔' if not up_legend_shown else None,
-                        showlegend=not up_legend_shown,
-                        text=f'向上笔{i+1}' if show_labels else None,
-                        textposition="middle center",
-                        legendgroup='up_strokes'
-                    ), row=row, col=col)
-                    up_legend_shown = True
+                    # 转换时间坐标为索引坐标
+                    start_idx = self._datetime_to_index(stroke.fx_a.dt)
+                    end_idx = self._datetime_to_index(stroke.fx_b.dt)
+                    
+                    if start_idx is not None and end_idx is not None:
+                        fig.add_trace(go.Scatter(
+                            x=[start_idx, end_idx],
+                            y=[stroke.fx_a.fx, stroke.fx_b.fx],
+                            mode='lines',
+                            line=dict(color='blue', width=3),
+                            name='向上笔' if not up_legend_shown else None,
+                            showlegend=not up_legend_shown,
+                            text=f'向上笔{i+1}' if show_labels else None,
+                            textposition="middle center",
+                            legendgroup='up_strokes'
+                        ), row=row, col=col)
+                        up_legend_shown = True
         
         # 绘制向下笔
         if show_down:
             down_legend_shown = False
             for i, stroke in enumerate(down_strokes):
                 if hasattr(stroke, 'fx_a') and hasattr(stroke, 'fx_b'):
-                    fig.add_trace(go.Scatter(
-                        x=[stroke.fx_a.dt, stroke.fx_b.dt],
-                        y=[stroke.fx_a.fx, stroke.fx_b.fx],
-                        mode='lines',
-                        line=dict(color='orange', width=3),
-                        name='向下笔' if not down_legend_shown else None,
-                        showlegend=not down_legend_shown,
-                        text=f'向下笔{i+1}' if show_labels else None,
-                        textposition="middle center",
-                        legendgroup='down_strokes'
-                    ), row=row, col=col)
-                    down_legend_shown = True
+                    # 转换时间坐标为索引坐标
+                    start_idx = self._datetime_to_index(stroke.fx_a.dt)
+                    end_idx = self._datetime_to_index(stroke.fx_b.dt)
+                    
+                    if start_idx is not None and end_idx is not None:
+                        fig.add_trace(go.Scatter(
+                            x=[start_idx, end_idx],
+                            y=[stroke.fx_a.fx, stroke.fx_b.fx],
+                            mode='lines',
+                            line=dict(color='orange', width=3),
+                            name='向下笔' if not down_legend_shown else None,
+                            showlegend=not down_legend_shown,
+                            text=f'向下笔{i+1}' if show_labels else None,
+                            textposition="middle center",
+                            legendgroup='down_strokes'
+                        ), row=row, col=col)
+                        down_legend_shown = True
 
     def _add_segments(self, fig, row, col, show_labels=False):
         """添加线段（使用真实CZSC数据）"""
@@ -366,33 +376,38 @@ class EnhancedChartGenerator:
                     
                     print(f"Debug: 线段{i+1}: {start_point.dt} -> {end_point.dt}")  # 调试输出
                     
-                    fig.add_trace(go.Scatter(
-                        x=[start_point.dt, end_point.dt],
-                        y=[start_point.fx, end_point.fx],
-                        mode='lines+markers',  # 添加端点标记
-                        line=dict(color='purple', width=4, dash='dash'),
-                        marker=dict(size=8, color='purple', symbol='diamond'),
-                        name='线段' if i == 0 else None,
-                        showlegend=(i == 0),
-                        text=f'线段{i+1}' if show_labels else None,
-                        textposition="middle center",
-                        legendgroup='segments'  # 线段图例组
-                    ), row=row, col=col)
+                    # 转换时间坐标为索引坐标
+                    start_idx = self._datetime_to_index(start_point.dt)
+                    end_idx = self._datetime_to_index(end_point.dt)
                     
-                    # 如果显示标注，添加线段编号
-                    if show_labels:
-                        mid_x = start_point.dt + (end_point.dt - start_point.dt) / 2
-                        mid_y = (start_point.fx + end_point.fx) / 2
-                        fig.add_annotation(
-                            x=mid_x, y=mid_y,
-                            text=f"XD{i+1}",
-                            showarrow=False,
-                            font=dict(size=10, color="purple"),
-                            bgcolor="white",
-                            bordercolor="purple",
-                            borderwidth=1,
-                            row=row, col=col
-                        )
+                    if start_idx is not None and end_idx is not None:
+                        fig.add_trace(go.Scatter(
+                            x=[start_idx, end_idx],
+                            y=[start_point.fx, end_point.fx],
+                            mode='lines+markers',  # 添加端点标记
+                            line=dict(color='purple', width=4, dash='dash'),
+                            marker=dict(size=8, color='purple', symbol='diamond'),
+                            name='线段' if i == 0 else None,
+                            showlegend=(i == 0),
+                            text=f'线段{i+1}' if show_labels else None,
+                            textposition="middle center",
+                            legendgroup='segments'  # 线段图例组
+                        ), row=row, col=col)
+                        
+                        # 如果显示标注，添加线段编号
+                        if show_labels:
+                            mid_x = start_idx + (end_idx - start_idx) / 2
+                            mid_y = (start_point.fx + end_point.fx) / 2
+                            fig.add_annotation(
+                                x=mid_x, y=mid_y,
+                                text=f"XD{i+1}",
+                                showarrow=False,
+                                font=dict(size=10, color="purple"),
+                                bgcolor="white",
+                                bordercolor="purple",
+                                borderwidth=1,
+                                row=row, col=col
+                            )
 
     def _add_buy_sell_points(self, fig, row, col, buy_types=None, sell_types=None, show_labels=False):
         """添加买卖点（使用真实CZSC数据，支持按类型独立控制）"""
@@ -434,21 +449,24 @@ class EnhancedChartGenerator:
                     color = colors.get(type_name, 'lightgreen')
                     show_legend = type_name not in added_types
                     
-                    fig.add_trace(go.Scatter(
-                        x=[date],
-                        y=[pos],
-                        mode='markers',
-                        marker=dict(symbol=symbol, size=12, color=color, 
-                                   line=dict(color='darkgreen', width=2)),
-                        name=type_name if show_legend else None,
-                        text=[type_name.replace('买点', 'B')] if show_labels else None,
-                        textposition="bottom center",
-                        showlegend=show_legend,
-                        legendgroup=f'buy_{type_name}'  # 每种类型独立图例组
-                    ), row=row, col=col)
-                    
-                    if show_legend:
-                        added_types.add(type_name)
+                    # 转换时间坐标为索引坐标
+                    date_idx = self._datetime_to_index(date)
+                    if date_idx is not None:
+                        fig.add_trace(go.Scatter(
+                            x=[date_idx],
+                            y=[pos],
+                            mode='markers',
+                            marker=dict(symbol=symbol, size=12, color=color, 
+                                       line=dict(color='darkgreen', width=2)),
+                            name=type_name if show_legend else None,
+                            text=[type_name.replace('买点', 'B')] if show_labels else None,
+                            textposition="bottom center",
+                            showlegend=show_legend,
+                            legendgroup=f'buy_{type_name}'  # 每种类型独立图例组
+                        ), row=row, col=col)
+                        
+                        if show_legend:
+                            added_types.add(type_name)
         
         # 卖点标记（按类型过滤）
         if sell_types and sell_points:
@@ -474,21 +492,24 @@ class EnhancedChartGenerator:
                     color = colors.get(type_name, 'lightcoral')
                     show_legend = type_name not in added_types
                     
-                    fig.add_trace(go.Scatter(
-                        x=[date],
-                        y=[pos],
-                        mode='markers',
-                        marker=dict(symbol=symbol, size=12, color=color, 
-                                   line=dict(color='darkred', width=2)),
-                        name=type_name if show_legend else None,
-                        text=[type_name.replace('卖点', 'S')] if show_labels else None,
-                        textposition="top center",
-                        showlegend=show_legend,
-                        legendgroup=f'sell_{type_name}'  # 每种类型独立图例组
-                    ), row=row, col=col)
-                    
-                    if show_legend:
-                        added_types.add(type_name)
+                    # 转换时间坐标为索引坐标
+                    date_idx = self._datetime_to_index(date)
+                    if date_idx is not None:
+                        fig.add_trace(go.Scatter(
+                            x=[date_idx],
+                            y=[pos],
+                            mode='markers',
+                            marker=dict(symbol=symbol, size=12, color=color,
+                                       line=dict(color='darkred', width=2)),
+                            name=type_name if show_legend else None,
+                            text=[type_name.replace('卖点', 'S')] if show_labels else None,
+                            textposition="top center",
+                            showlegend=show_legend,
+                            legendgroup=f'sell_{type_name}'  # 每种类型独立图例组
+                        ), row=row, col=col)
+                        
+                        if show_legend:
+                            added_types.add(type_name)
 
     def _add_divergence(self, fig, row, col):
         """添加背驰标记（使用真实CZSC数据，分别控制顶底背驰）"""
@@ -540,48 +561,53 @@ class EnhancedChartGenerator:
             return
         
         for i, pivot in enumerate(pivots):
-            # 绘制中枢区域
-            fig.add_shape(
-                type="rect",
-                xref="x", yref="y",
-                x0=pivot['start_dt'], y0=pivot['low'],
-                x1=pivot['end_dt'], y1=pivot['high'],
-                fillcolor="purple",
-                opacity=0.2,
-                layer="below",
-                line_width=0,
-                row=row, col=col
-            )
+            # 转换时间坐标为索引坐标
+            start_idx = self._datetime_to_index(pivot['start_dt'])
+            end_idx = self._datetime_to_index(pivot['end_dt'])
             
-            # 添加中枢边界线
-            fig.add_hline(
-                y=pivot['high'], 
-                line_dash="dash", 
-                line_color="purple", 
-                opacity=0.6,
-                row=row, col=col
-            )
-            fig.add_hline(
-                y=pivot['low'], 
-                line_dash="dash", 
-                line_color="purple", 
-                opacity=0.6,
-                row=row, col=col
-            )
-            
-            # 添加中枢标签
-            if show_labels:
-                fig.add_annotation(
-                    x=pivot['start_dt'] + (pivot['end_dt'] - pivot['start_dt']) / 2,
-                    y=pivot['center'],
-                    text=f"ZS{i+1}",
-                    showarrow=False,
-                    font=dict(size=10, color="white"),
-                    bgcolor="purple",
-                    bordercolor="purple",
-                    borderwidth=1,
+            if start_idx is not None and end_idx is not None:
+                # 绘制中枢区域
+                fig.add_shape(
+                    type="rect",
+                    xref="x", yref="y",
+                    x0=start_idx, y0=pivot['low'],
+                    x1=end_idx, y1=pivot['high'],
+                    fillcolor="purple",
+                    opacity=0.2,
+                    layer="below",
+                    line_width=0,
                     row=row, col=col
                 )
+                
+                # 添加中枢边界线
+                fig.add_hline(
+                    y=pivot['high'], 
+                    line_dash="dash", 
+                    line_color="purple", 
+                    opacity=0.6,
+                    row=row, col=col
+                )
+                fig.add_hline(
+                    y=pivot['low'], 
+                    line_dash="dash", 
+                    line_color="purple", 
+                    opacity=0.6,
+                    row=row, col=col
+                )
+                
+                # 添加中枢标签
+                if show_labels:
+                    fig.add_annotation(
+                        x=start_idx + (end_idx - start_idx) / 2,
+                        y=pivot['center'],
+                        text=f"ZS{i+1}",
+                        showarrow=False,
+                        font=dict(size=10, color="white"),
+                        bgcolor="purple",
+                        bordercolor="purple",
+                        borderwidth=1,
+                        row=row, col=col
+                    )
             
             # 添加到图例（只添加一次）
             if i == 0:
