@@ -324,25 +324,31 @@ class MultiDataSourceManager:
         print(f"📅 时间范围: {params['start']} 至 {params['end']}")
         print(f"📈 K线级别: {kline_level}")
         
+        # 根据K线级别动态调整数据源优先级
+        ordered_sources = self._get_ordered_sources_by_kline_level(kline_level)
+        
         # 按优先级尝试各个数据源
-        for i, data_source in enumerate(self.data_sources):
+        for i, data_source in enumerate(ordered_sources):
             if not data_source.is_available():
                 print(f"⚠️ 跳过不可用的数据源: {data_source.name}")
                 continue
             
-            print(f"🔍 尝试数据源 {i+1}/{len(self.data_sources)}: {data_source.name}")
+            print(f"🔍 尝试数据源 {i+1}/{len(ordered_sources)}: {data_source.name}")
             
             try:
                 # 根据数据源类型传递不同的参数
                 if data_source.name == "akshare":
-                    data = data_source.get_data(symbol, **params)
+                    # akshare使用6位代码
+                    clean_symbol = symbol.split('.')[0]
+                    data = data_source.get_data(clean_symbol, **params)
                 elif data_source.name == "yfinance":
-                    # yfinance需要interval参数而不是kline_level
+                    # yfinance需要interval参数而不是kline_level，并且需要完整的symbol格式
                     yf_params = {
                         'start': params['start'],
                         'end': params['end'],
                         'interval': self._get_yfinance_interval(kline_level)
                     }
+                    print(f"🔍 yfinance使用参数: symbol={symbol}, interval={yf_params['interval']}")
                     data = data_source.get_data(symbol, **yf_params)
                 else:
                     data = data_source.get_data(symbol, **params)
@@ -362,6 +368,20 @@ class MultiDataSourceManager:
         
         print("❌ 所有数据源均失败")
         return None, "none"
+    
+    def _get_ordered_sources_by_kline_level(self, kline_level: str) -> List:
+        """根据K线级别返回优先级排序的数据源列表"""
+        # 分钟级别数据：yfinance优先（支持分钟级别），akshare降级到日线
+        if kline_level in ['15m', '30m', '1h', '5m', '2m', '1m']:
+            print(f"🔄 检测到分钟级别数据({kline_level})，调整数据源优先级：yfinance > akshare")
+            # 重新排序：yfinance优先
+            yfinance_sources = [ds for ds in self.data_sources if ds.name == "yfinance"]
+            other_sources = [ds for ds in self.data_sources if ds.name != "yfinance"]
+            return yfinance_sources + other_sources
+        else:
+            # 日线、周线、月线：akshare优先（更稳定，不限流）
+            print(f"🔄 检测到日线级别数据({kline_level})，使用默认优先级：akshare > yfinance")
+            return sorted(self.data_sources, key=lambda x: x.priority)
     
     def _format_symbol(self, stock_code: str) -> str:
         """格式化股票代码为各数据源需要的格式"""
