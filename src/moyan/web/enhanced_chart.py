@@ -140,14 +140,31 @@ class EnhancedChartGenerator:
                 # 可以选择填充缺失的时间点或标记异常
 
     def _get_x_data(self):
-        """获取优化的X轴数据，显示月份标识"""
-        # 使用原始时间索引，但会在时间轴配置中控制显示格式
-        return self.trading_df.index
+        """获取优化的X轴数据，避免时间间隙但支持悬停显示日期"""
+        if self.kline_level in ['1h', '30m', '15m', '5m', '2m', '1m']:
+            # 分钟级别：使用序号避免间隙，但保留原始时间用于悬停显示
+            return list(range(len(self.trading_df)))
+        else:
+            # 日线级别：使用序号避免间隙，但保留原始时间用于悬停显示  
+            return list(range(len(self.trading_df)))
 
     def _add_candlestick(self, fig, row, col):
         """添加K线图（中国股市红涨绿跌配色，剔除非交易日）"""
         if len(self.trading_df) > 0:
             x_data = self._get_x_data()
+            
+            # 创建自定义悬停信息，显示完整日期
+            hover_text = []
+            for i, (idx, row_data) in enumerate(self.trading_df.iterrows()):
+                date_str = idx.strftime('%Y-%m-%d %H:%M') if self.kline_level in ['1h', '30m', '15m', '5m', '2m', '1m'] else idx.strftime('%Y-%m-%d')
+                hover_info = f"日期: {date_str}<br>"
+                hover_info += f"开盘: {row_data['Open']:.2f}<br>"
+                hover_info += f"最高: {row_data['High']:.2f}<br>"
+                hover_info += f"最低: {row_data['Low']:.2f}<br>"
+                hover_info += f"收盘: {row_data['Close']:.2f}<br>"
+                if 'Volume' in row_data:
+                    hover_info += f"成交量: {row_data['Volume']:,.0f}"
+                hover_text.append(hover_info)
             
             fig.add_trace(go.Candlestick(
                 x=x_data,
@@ -161,7 +178,9 @@ class EnhancedChartGenerator:
                 decreasing_line_color='green', 
                 decreasing_fillcolor='green',
                 line=dict(width=1),
-                showlegend=False
+                showlegend=False,
+                hoverinfo='text',
+                hovertext=hover_text
             ), row=row, col=col)
 
     def _add_volume(self, fig, row, col):
@@ -813,36 +832,61 @@ class EnhancedChartGenerator:
             hovermode="x unified",
             # 去掉范围选择器，保持专业外观
             xaxis_rangeslider_visible=False,
+            # 添加十字线配置
+            dragmode='pan',  # 默认拖拽模式
         )
         
-        # 配置时间轴 - 显示月份标识
-        if self.kline_level in ['1h', '30m', '15m', '5m', '2m', '1m']:
-            # 分钟级别数据：显示月份，避免时间间隙
-            fig.update_xaxes(
-                type='category',  # 使用category类型避免时间间隙
-                categoryorder='category ascending',
-                tickangle=0,  # 水平显示
-                showgrid=False,  # 去掉网格线
-                # 简化时间标签显示
-                tickformat='%m月',  # 只显示月份
-                dtick="M1",  # 每月显示一个标签
-                tickfont=dict(size=10, color='#666666'),
-                showline=True,
-                linewidth=1,
-                linecolor='#e0e0e0'
-            )
-        else:
-            # 日线及以上级别显示月份
-            fig.update_xaxes(
-                showgrid=False,  # 去掉网格线
-                # 简化时间标签显示
-                tickformat='%m月',  # 只显示月份
-                dtick="M1",  # 每月显示一个标签
-                tickfont=dict(size=10, color='#666666'),
-                showline=True,
-                linewidth=1,
-                linecolor='#e0e0e0'
-            )
+        # 为所有子图添加十字线配置
+        fig.update_traces(
+            line=dict(width=1),
+            connectgaps=False
+        )
+        
+        # 配置时间轴 - 使用序号避免间隙，但显示月份标识
+        data_count = len(self.trading_df)
+        
+        # 生成月份标签
+        time_indices = self.trading_df.index
+        month_labels = []
+        month_positions = []
+        
+        # 找到每个月的第一个交易日位置
+        current_month = None
+        for i, dt in enumerate(time_indices):
+            month_key = dt.strftime('%Y-%m')
+            if month_key != current_month:
+                current_month = month_key
+                month_labels.append(dt.strftime('%m月'))
+                month_positions.append(i)
+        
+        # 确保有开始和结束标签
+        if len(month_positions) == 0 or month_positions[0] != 0:
+            month_positions.insert(0, 0)
+            month_labels.insert(0, time_indices[0].strftime('%m月'))
+        if month_positions[-1] != data_count - 1:
+            month_positions.append(data_count - 1)
+            month_labels.append(time_indices[-1].strftime('%m月'))
+        
+        # 配置X轴
+        fig.update_xaxes(
+            type='linear',  # 使用数字序号
+            tickangle=0,  # 水平显示
+            showgrid=False,  # 去掉网格线
+            tickmode='array',
+            tickvals=month_positions,
+            ticktext=month_labels,
+            tickfont=dict(size=10, color='#666666'),
+            showline=True,
+            linewidth=1,
+            linecolor='#e0e0e0',
+            # 十字线配置
+            showspikes=True,  # 显示垂直十字线
+            spikecolor="gray",
+            spikesnap="cursor",
+            spikemode="across",  # 十字线穿过所有子图
+            spikethickness=1,
+            spikedash="solid"
+        )
         
         # 配置Y轴 - 简洁美观
         fig.update_yaxes(
@@ -850,7 +894,14 @@ class EnhancedChartGenerator:
             showline=True,
             linewidth=1,
             linecolor='#e0e0e0',
-            tickfont=dict(size=10, color='#666666')
+            tickfont=dict(size=10, color='#666666'),
+            # 十字线配置
+            showspikes=True,  # 显示水平十字线
+            spikecolor="gray", 
+            spikesnap="cursor",
+            spikemode="across",  # 十字线穿过所有子图
+            spikethickness=1,
+            spikedash="solid"
         )
         fig.add_annotation(
             text="缠论技术分析图例说明:",
