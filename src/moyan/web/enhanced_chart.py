@@ -35,29 +35,42 @@ class EnhancedChartGenerator:
         
         print(f"Debug: 原始数据 {len(self.df)} 条，过滤后交易日数据 {len(self.trading_df)} 条")  # 调试输出
 
+    def _get_x_data(self):
+        """获取优化的X轴数据，避免时间间隙"""
+        if self.kline_level in ['1h', '30m', '15m', '5m', '2m', '1m']:
+            # 对于分钟级别数据，使用格式化的时间标签以避免间隙
+            return [dt.strftime('%m-%d %H:%M') for dt in self.trading_df.index]
+        else:
+            # 日线及以上级别使用原始时间索引
+            return self.trading_df.index
+
     def _add_candlestick(self, fig, row, col):
         """添加K线图（中国股市红涨绿跌配色，剔除非交易日）"""
-        fig.add_trace(go.Candlestick(
-            x=self.trading_df.index,
-            open=self.trading_df['Open'],
-            high=self.trading_df['High'],
-            low=self.trading_df['Low'],
-            close=self.trading_df['Close'],
-            name='K线',
-            increasing_line_color='red',
-            increasing_fillcolor='red',
-            decreasing_line_color='green', 
-            decreasing_fillcolor='green',
-            line=dict(width=1),
-            showlegend=False
-        ), row=row, col=col)
+        if len(self.trading_df) > 0:
+            x_data = self._get_x_data()
+            
+            fig.add_trace(go.Candlestick(
+                x=x_data,
+                open=self.trading_df['Open'],
+                high=self.trading_df['High'],
+                low=self.trading_df['Low'],
+                close=self.trading_df['Close'],
+                name='K线',
+                increasing_line_color='red',
+                increasing_fillcolor='red',
+                decreasing_line_color='green', 
+                decreasing_fillcolor='green',
+                line=dict(width=1),
+                showlegend=False
+            ), row=row, col=col)
 
     def _add_volume(self, fig, row, col):
         """添加成交量（使用过滤后的交易日数据）"""
         if 'Volume' in self.trading_df.columns and len(self.trading_df) > 0:
+            x_data = self._get_x_data()
             colors = ['red' if row['Close'] > row['Open'] else 'green' for _, row in self.trading_df.iterrows()]
             fig.add_trace(go.Bar(
-                x=self.trading_df.index,
+                x=x_data,
                 y=self.trading_df['Volume'],
                 marker_color=colors,
                 name='成交量',
@@ -67,10 +80,11 @@ class EnhancedChartGenerator:
     def _add_ma(self, fig, row, col, periods=[5, 20]):
         """添加移动平均线（使用过滤后的交易日数据）"""
         if len(self.trading_df) > 0:
+            x_data = self._get_x_data()
             for p in periods:
                 ma = self.trading_df['Close'].rolling(window=p).mean()
                 fig.add_trace(go.Scatter(
-                    x=self.trading_df.index,
+                    x=x_data,
                     y=ma,
                     mode='lines',
                     name=f'MA{p}',
@@ -445,6 +459,7 @@ class EnhancedChartGenerator:
     def _add_macd(self, fig, row, col):
         """添加MACD指标（使用过滤后的交易日数据）"""
         if len(self.trading_df) > 0:
+            x_data = self._get_x_data()
             # 简化的MACD计算
             ema12 = self.trading_df['Close'].ewm(span=12).mean()
             ema26 = self.trading_df['Close'].ewm(span=26).mean()
@@ -453,20 +468,20 @@ class EnhancedChartGenerator:
             histogram = macd - signal
             
             fig.add_trace(go.Scatter(
-                x=self.trading_df.index, y=macd, 
+                x=x_data, y=macd, 
                 mode='lines', name='MACD', 
                 line=dict(color='blue', width=1)
             ), row=row, col=col)
             
             fig.add_trace(go.Scatter(
-                x=self.trading_df.index, y=signal, 
+                x=x_data, y=signal, 
                 mode='lines', name='Signal', 
                 line=dict(color='orange', width=1)
             ), row=row, col=col)
             
             colors = ['red' if val >= 0 else 'green' for val in histogram]
             fig.add_trace(go.Bar(
-                x=self.trading_df.index, y=histogram, 
+                x=x_data, y=histogram, 
                 name='Histogram', 
                 marker_color=colors, 
                 showlegend=False
@@ -475,6 +490,7 @@ class EnhancedChartGenerator:
     def _add_rsi(self, fig, row, col):
         """添加RSI指标（使用过滤后的交易日数据）"""
         if len(self.trading_df) > 0:
+            x_data = self._get_x_data()
             # 简化的RSI计算
             delta = self.trading_df['Close'].diff()
             gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
@@ -483,7 +499,7 @@ class EnhancedChartGenerator:
             rsi = 100 - (100 / (1 + rs))
             
             fig.add_trace(go.Scatter(
-                x=self.trading_df.index, y=rsi, 
+                x=x_data, y=rsi, 
                 mode='lines', name='RSI', 
                 line=dict(color='purple', width=1)
             ), row=row, col=col)
@@ -494,6 +510,7 @@ class EnhancedChartGenerator:
     def _add_bollinger_bands(self, fig, row, col):
         """添加布林带（使用过滤后的交易日数据）"""
         if len(self.trading_df) > 0:
+            x_data = self._get_x_data()
             window = 20
             rolling_mean = self.trading_df['Close'].rolling(window=window).mean()
             rolling_std = self.trading_df['Close'].rolling(window=window).std()
@@ -501,19 +518,19 @@ class EnhancedChartGenerator:
             lower_band = rolling_mean - (rolling_std * 2)
             
             fig.add_trace(go.Scatter(
-                x=self.trading_df.index, y=upper_band, 
+                x=x_data, y=upper_band, 
                 mode='lines', name='Upper Band', 
                 line=dict(color='gray', width=1, dash='dot')
             ), row=row, col=col)
             
             fig.add_trace(go.Scatter(
-                x=self.trading_df.index, y=rolling_mean, 
+                x=x_data, y=rolling_mean, 
                 mode='lines', name='Middle Band', 
                 line=dict(color='blue', width=1)
             ), row=row, col=col)
             
             fig.add_trace(go.Scatter(
-                x=self.trading_df.index, y=lower_band, 
+                x=x_data, y=lower_band, 
                 mode='lines', name='Lower Band', 
                 line=dict(color='gray', width=1, dash='dot')
             ), row=row, col=col)
@@ -697,6 +714,30 @@ class EnhancedChartGenerator:
             # 去掉范围选择器，保持专业外观
             xaxis_rangeslider_visible=False,
         )
+        
+        # 配置时间轴以移除间隙
+        # 对于分钟级别数据，使用category模式来避免时间间隙
+        if self.kline_level in ['1h', '30m', '15m', '5m', '2m', '1m']:
+            # 为分钟级别数据创建连续的时间轴
+            fig.update_xaxes(
+                type='category',  # 使用category类型避免时间间隙
+                categoryorder='category ascending',
+                tickangle=45,
+                showgrid=True,
+                gridwidth=1,
+                gridcolor='lightgray'
+            )
+        else:
+            # 日线及以上级别保持原有设置
+            fig.update_xaxes(
+                showgrid=True,
+                gridwidth=1,
+                gridcolor='lightgray',
+                # 移除非交易日的间隙
+                rangebreaks=[
+                    dict(bounds=["sat", "mon"]),  # 隐藏周末
+                ]
+            )
         
         # 添加图例说明文本 - 分成多个部分避免遮挡
         fig.add_annotation(
