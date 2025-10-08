@@ -731,72 +731,42 @@ class EnhancedChartGenerator:
                 line=dict(color='gray', width=1, dash='dot')
             ), row=row, col=col)
 
-    def _add_statistics_panels(self, fig):
-        """添加统计面板（买卖条件统计、背驰统计、中枢统计）"""
-        
+    def _add_comprehensive_statistics(self, fig):
+        """添加综合统计面板（单列布局）"""
         # 获取统计数据
-        fractals_data = self.data.get('fractals', {})
-        strokes_data = self.data.get('strokes', {})
-        buy_points = self.data.get('buy_points', [])
-        sell_points = self.data.get('sell_points', [])
+        buy_sell_data = self.data.get('buy_sell_points', {})
+        buy_points = buy_sell_data.get('buy_points', [])
+        sell_points = buy_sell_data.get('sell_points', [])
+        
         divergences = self.data.get('divergences', [])
-        
-        # 1. 买卖条件统计（左下）
-        buy_count = len(buy_points)
-        sell_count = len(sell_points)
-        
-        fig.add_trace(go.Bar(
-            x=['买点', '卖点'],
-            y=[buy_count, sell_count],
-            marker_color=['green', 'red'],
-            text=[str(buy_count), str(sell_count)],
-            textposition='auto',
-            name='买卖点统计',
-            showlegend=False
-        ), row=4, col=1)
-        
-        # 2. 背驰统计（中下）
-        top_div = len([d for d in divergences if d.get('type') == '顶背驰'])
-        bottom_div = len([d for d in divergences if d.get('type') == '底背驰'])
-        
-        fig.add_trace(go.Bar(
-            x=['顶背驰', '底背驰'],
-            y=[top_div, bottom_div],
-            marker_color=['red', 'green'],
-            text=[str(top_div), str(bottom_div)],
-            textposition='auto',
-            name='背驰统计',
-            showlegend=False
-        ), row=4, col=2)
-        
-        # 3. 中枢统计（右下）
-        # 从分析结果中获取正确的中枢数量
         pivots = self.data.get('pivots', [])
-        pivot_count = len(pivots)
         
-        fig.add_trace(go.Bar(
-            x=['中枢'],
-            y=[pivot_count],
-            marker_color=['purple'],
-            text=[str(pivot_count)],
-            textposition='auto',
-            name='中枢统计',
-            showlegend=False
-        ), row=4, col=3)
-        
-        # 4. 分型统计（最右下）
+        fractals_data = self.data.get('fractals', {})
         top_fx_count = fractals_data.get('top_count', 0)
         bottom_fx_count = fractals_data.get('bottom_count', 0)
         
+        # 创建综合统计条形图
+        categories = ['买点', '卖点', '顶背驰', '底背驰', '中枢', '顶分型', '底分型']
+        values = [
+            len(buy_points),
+            len(sell_points),
+            len([d for d in divergences if d.get('type') == '顶背驰']),
+            len([d for d in divergences if d.get('type') == '底背驰']),
+            len(pivots),
+            top_fx_count,
+            bottom_fx_count
+        ]
+        colors = ['green', 'red', 'red', 'green', 'purple', 'red', 'green']
+        
         fig.add_trace(go.Bar(
-            x=['顶分型', '底分型'],
-            y=[top_fx_count, bottom_fx_count],
-            marker_color=['red', 'green'],
-            text=[str(top_fx_count), str(bottom_fx_count)],
+            x=categories,
+            y=values,
+            marker_color=colors,
+            text=values,
             textposition='auto',
-            name='分型统计',
+            name='统计信息',
             showlegend=False
-        ), row=4, col=4)
+        ), row=4, col=1)
 
     def create_interactive_chart(self, display_options):
         """
@@ -806,22 +776,14 @@ class EnhancedChartGenerator:
         
         # 创建专业布局：主图 + 成交量 + MACD + 统计面板
         fig = make_subplots(
-            rows=4, cols=4,
+            rows=4, cols=1,  # 简化为单列布局，确保十字线能正确跨图显示
             shared_xaxes=True,  # 确保X轴完全共享
             shared_yaxes=False,  # Y轴不共享
-            vertical_spacing=0.05,
-            horizontal_spacing=0.05,
+            vertical_spacing=0.02,  # 减小垂直间距，让图表更紧凑
             row_heights=[0.5, 0.2, 0.2, 0.1],  # 主图、成交量、MACD、统计
-            column_widths=[0.7, 0.1, 0.1, 0.1],  # 主要图表和统计面板
-            specs=[
-                [{"colspan": 4, "secondary_y": False}, None, None, None],  # 主图占满整行
-                [{"colspan": 4, "secondary_y": False}, None, None, None],  # 成交量占满整行
-                [{"colspan": 4, "secondary_y": False}, None, None, None],  # MACD占满整行
-                [{}, {}, {}, {}]  # 统计面板分4列
-            ],
             subplot_titles=[
                 f"{self.stock_code} ({self.data.get('stock_name', self.stock_code)}) 缠论技术分析图",
-                "成交量", "MACD指标", "", "", "", ""
+                "成交量", "MACD指标", "统计面板"
             ]
         )
 
@@ -877,21 +839,16 @@ class EnhancedChartGenerator:
         if display_options.get('show_macd'):
             self._add_macd(fig, 3, 1)
 
-        # 第4行：统计面板
-        self._add_statistics_panels(fig)
+        # 第4行：统计面板（简化为单个综合统计图）
+        self._add_comprehensive_statistics(fig)
 
         # 更新坐标轴
         fig.update_yaxes(title_text="价格 (元)", row=1, col=1)
         fig.update_yaxes(title_text="成交量", row=2, col=1)
         fig.update_yaxes(title_text="MACD", row=3, col=1)
-        
-        # 统计面板坐标轴标题
-        fig.update_yaxes(title_text="买卖条件统计", row=4, col=1, title_font_size=10)
-        fig.update_yaxes(title_text="背驰统计", row=4, col=2, title_font_size=10)
-        fig.update_yaxes(title_text="中枢统计", row=4, col=3, title_font_size=10)
-        fig.update_yaxes(title_text="分型统计", row=4, col=4, title_font_size=10)
+        fig.update_yaxes(title_text="统计", row=4, col=1)
 
-        # 设置专业的布局样式
+        # 设置专业的布局样式 - 强化跨图光标
         fig.update_layout(
             height=1100,  # 增加高度以容纳统计面板和图例说明
             showlegend=True,
@@ -915,6 +872,8 @@ class EnhancedChartGenerator:
             # 增强光标交互体验
             hoverdistance=100,  # 增加悬停检测距离
             spikedistance=1000,  # 增加十字线检测距离
+            # 强制启用跨子图的十字线
+            hoversubplots="axis",  # 关键设置：启用跨子图悬停
         )
         
         # 为所有子图添加统一光标配置
@@ -958,7 +917,7 @@ class EnhancedChartGenerator:
             month_positions.append(data_count - 1)
             month_labels.append(time_indices[-1].strftime('%m月'))
         
-        # 配置X轴 - 确保所有子图完全对齐，增强光标效果
+        # 配置X轴 - 强制跨图十字线显示
         fig.update_xaxes(
             type='linear',  # 使用数字序号
             tickangle=0,  # 水平显示
@@ -972,30 +931,30 @@ class EnhancedChartGenerator:
             linecolor='#e0e0e0',
             # 强制设置相同的X轴范围
             range=[0, data_count - 1],
-            # 增强的十字线配置 - 垂直线
+            # 强化的十字线配置 - 垂直线
             showspikes=True,  # 显示垂直十字线
-            spikecolor="rgba(0,0,0,0.6)",  # 更明显的颜色
+            spikecolor="rgba(255,0,0,0.8)",  # 更明显的红色
             spikesnap="cursor",  # 跟随光标
-            spikemode="across",  # 十字线穿过所有子图
-            spikethickness=2,  # 增加线条粗细
+            spikemode="toaxis+across",  # 十字线穿过所有子图并延伸到轴
+            spikethickness=3,  # 进一步增加线条粗细
             spikedash="solid",  # 实线
             # 确保所有子图X轴同步
             matches='x'
         )
         
-        # 配置Y轴 - 增强光标效果
+        # 配置Y轴 - 强化光标效果
         fig.update_yaxes(
             showgrid=False,  # 去掉网格线
             showline=True,
             linewidth=1,
             linecolor='#e0e0e0',
             tickfont=dict(size=10, color='#666666'),
-            # 增强的十字线配置 - 水平线
+            # 强化的十字线配置 - 水平线
             showspikes=True,  # 显示水平十字线
-            spikecolor="rgba(0,0,0,0.6)",  # 更明显的颜色
+            spikecolor="rgba(255,0,0,0.8)",  # 更明显的红色
             spikesnap="cursor",  # 跟随光标
-            spikemode="across",  # 十字线穿过所有子图
-            spikethickness=2,  # 增加线条粗细
+            spikemode="toaxis+across",  # 十字线穿过所有子图并延伸到轴
+            spikethickness=3,  # 进一步增加线条粗细
             spikedash="solid"  # 实线
         )
         fig.add_annotation(
