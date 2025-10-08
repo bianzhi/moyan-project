@@ -38,18 +38,15 @@ class EnhancedChartGenerator:
     def _get_x_data(self):
         """获取优化的X轴数据，避免时间间隙"""
         if self.kline_level in ['1h', '30m', '15m', '5m', '2m', '1m']:
-            # 对于分钟级别数据，使用格式化的时间标签以避免间隙
-            # 根据数据量调整时间格式
+            # 对于分钟级别数据，使用简化的时间标签
+            # 只显示关键时间点，避免密集恐惧症
             data_count = len(self.trading_df)
-            if data_count > 200:
-                # 数据量大时，只显示日期
+            if data_count > 100:
+                # 数据量大时，只显示月-日
                 return [dt.strftime('%m-%d') for dt in self.trading_df.index]
-            elif data_count > 100:
-                # 中等数据量，显示日期和小时
-                return [dt.strftime('%m-%d %H:00') for dt in self.trading_df.index]
             else:
-                # 数据量少时，显示完整时间
-                return [dt.strftime('%m-%d %H:%M') for dt in self.trading_df.index]
+                # 数据量少时，显示月-日 小时
+                return [dt.strftime('%m-%d %H时') for dt in self.trading_df.index]
         else:
             # 日线及以上级别使用原始时间索引
             return self.trading_df.index
@@ -725,51 +722,57 @@ class EnhancedChartGenerator:
             xaxis_rangeslider_visible=False,
         )
         
-        # 配置时间轴以移除间隙并确保全程标注
-        # 对于分钟级别数据，使用category模式来避免时间间隙
+        # 配置时间轴 - 简洁美观，避免密集恐惧症
         if self.kline_level in ['1h', '30m', '15m', '5m', '2m', '1m']:
-            # 为分钟级别数据创建连续的时间轴
+            # 为分钟级别数据创建简洁的时间轴
             data_count = len(self.trading_df)
             
-            # 根据数据量动态调整标签数量
+            # 大幅减少标签数量，只显示关键时间点
             if data_count <= 50:
-                tick_count = min(data_count, 10)  # 少量数据显示更多标签
-            elif data_count <= 150:
-                tick_count = min(data_count // 6, 15)  # 中等数据量
+                tick_count = 5  # 最多5个标签
+            elif data_count <= 100:
+                tick_count = 6  # 最多6个标签
             else:
-                tick_count = min(data_count // 10, 20)  # 大量数据避免过密
+                tick_count = 8  # 最多8个标签，避免过密
             
             fig.update_xaxes(
                 type='category',  # 使用category类型避免时间间隙
                 categoryorder='category ascending',
-                tickangle=45,
-                showgrid=True,
-                gridwidth=1,
-                gridcolor='lightgray',
-                # 确保时间标签全程显示
-                tickmode='linear',  # 线性分布时间标签
-                nticks=tick_count,  # 动态调整标签数量
-                tickfont=dict(size=9),  # 调整字体大小
-                # 强制显示首尾标签
-                tick0=0,  # 从第一个数据点开始
-                dtick=max(1, data_count // tick_count)  # 计算标签间隔
+                tickangle=0,  # 水平显示，更简洁
+                showgrid=False,  # 去掉网格线
+                # 确保显示首尾和关键时间点
+                tickmode='array',
+                tickvals=[i * (data_count - 1) // (tick_count - 1) for i in range(tick_count)],
+                tickfont=dict(size=10, color='#666666'),  # 淡化字体颜色
+                showline=True,
+                linewidth=1,
+                linecolor='#e0e0e0'
             )
         else:
-            # 日线及以上级别保持原有设置
+            # 日线及以上级别保持简洁设置
             fig.update_xaxes(
-                showgrid=True,
-                gridwidth=1,
-                gridcolor='lightgray',
+                showgrid=False,  # 去掉网格线
                 # 移除非交易日的间隙
                 rangebreaks=[
                     dict(bounds=["sat", "mon"]),  # 隐藏周末
                 ],
-                # 确保时间标签均匀分布
+                # 简化时间标签
                 tickmode='linear',
-                nticks=15  # 适当的标签数量
+                nticks=8,  # 减少标签数量
+                tickfont=dict(size=10, color='#666666'),
+                showline=True,
+                linewidth=1,
+                linecolor='#e0e0e0'
             )
         
-        # 添加图例说明文本 - 分成多个部分避免遮挡
+        # 配置Y轴 - 简洁美观
+        fig.update_yaxes(
+            showgrid=False,  # 去掉网格线
+            showline=True,
+            linewidth=1,
+            linecolor='#e0e0e0',
+            tickfont=dict(size=10, color='#666666')
+        )
         fig.add_annotation(
             text="缠论技术分析图例说明:",
             xref="paper", yref="paper",
