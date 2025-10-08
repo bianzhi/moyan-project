@@ -1,0 +1,26 @@
+# 墨岩缠论分析系统Docker版本依赖包
+# Moyan CZSC Analysis System Docker Dependencies
+
+# 核心依赖 - Core Dependencies
+czsc>=0.9.8                    # CZSC缠论核心库
+pandas>=1.5.0                  # 数据处理
+numpy>=1.21.0                  # 数值计算
+matplotlib>=3.5.0              # 图表绘制
+yfinance>=0.2.0                # 股票数据获取
+requests>=2.28.0               # HTTP请求
+loguru>=0.6.0                  # 日志管理
+
+# Web界面依赖 - Web Interface Dependencies
+streamlit>=1.25.0              # Web界面
+plotly>=5.15.0                 # 交互图表
+
+# 数据获取增强 - Data Acquisition Enhancement
+akshare>=1.11.0                # A股数据获取
+tushare>=1.2.0                 # 金融数据接口
+
+# 图表增强 - Chart Enhancement
+seaborn>=0.11.0                # 统计图表
+
+# 技术分析 - Technical Analysis (Docker兼容版本)
+# ta-lib>=0.4.0               # 跳过，在Docker中安装复杂
+# mplfinance>=0.12.0          # 跳过，版本兼容问题

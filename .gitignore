@@ -212,3 +212,31 @@ node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Docker相关文件 - 不上传到Git
+# Docker镜像文件（太大，不适合Git）
+*.tar
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+moyan-czsc-docker.tar
+docker-image-*.tar
+*-docker.tar
+
+# Docker构建缓存
+.docker/
+docker-build/
+docker-cache/
+
+# Docker Compose覆盖文件
+docker-compose.override.yml
+docker-compose.local.yml
+docker-compose.prod.yml
+
+# Docker卷数据
+docker-volumes/
+.docker-volumes/
+
+# 容器日志
+docker-logs/
+container-logs/

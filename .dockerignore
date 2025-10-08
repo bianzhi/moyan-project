@@ -1,0 +1,81 @@
+# Git相关
+.git
+.gitignore
+.gitattributes
+
+# Python缓存和虚拟环境
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.pytest_cache/
+
+# IDE和编辑器
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 操作系统
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# 项目特定
+logs/
+*.log
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# 文档和说明
+README*.md
+docs/
+examples/
+*.md
+
+# 开发工具
+Makefile
+docker-compose.yml
+docker-compose.*.yml
+
+# 测试文件
+tests/
+test_*.py
+*_test.py
+
+# 临时文件
+tmp/
+temp/
+*.tmp
+*.temp
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+*.ipynb
+
+# 构建产物
+build/
+dist/
+*.egg-info/

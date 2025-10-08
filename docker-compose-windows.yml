@@ -1,0 +1,32 @@
+# 墨岩缠论分析系统 - Windows Docker配置
+# Moyan CZSC Analysis System - Windows Docker Configuration
+
+services:
+  moyan-czsc:
+    image: moyan-project-moyan-czsc:latest
+    container_name: moyan-czsc-app
+    ports:
+      - "8501:8501"
+    volumes:
+      # 数据持久化 - Windows路径格式
+      - ./output:/app/output
+      - ./logs:/app/logs
+    environment:
+      - PYTHONPATH=/app
+      - PYTHONUNBUFFERED=1
+      - STREAMLIT_SERVER_PORT=8501
+      - STREAMLIT_SERVER_ADDRESS=0.0.0.0
+      - STREAMLIT_SERVER_HEADLESS=true
+      - STREAMLIT_BROWSER_GATHER_USAGE_STATS=false
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8501/_stcore/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+# 可选：如果需要自定义网络
+# networks:
+#   moyan-network:
+#     driver: bridge
