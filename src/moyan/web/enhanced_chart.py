@@ -927,12 +927,6 @@ class EnhancedChartGenerator:
             hovertemplate='<extra></extra>%{hovertext}',  # 简化悬停框
         )
         
-        # 为K线图添加特殊的悬停配置
-        fig.update_traces(
-            selector=dict(type='candlestick'),
-            hovertemplate='<extra></extra>%{hovertext}',  # 简化悬停框
-        )
-        
         # 为柱状图添加特殊的悬停配置
         fig.update_traces(
             selector=dict(type='bar'),
