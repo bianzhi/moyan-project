@@ -367,74 +367,70 @@ class EnhancedChartGenerator:
             ), row=row, col=col)
 
     def _add_pivots(self, fig, row, col, show_labels=False):
-        """添加中枢区域（基于笔的重叠区域）"""
-        strokes_data = self.data.get('strokes', {})
-        up_strokes = strokes_data.get('up_strokes', [])
-        down_strokes = strokes_data.get('down_strokes', [])
+        """添加中枢区域（使用分析结果中的中枢数据）"""
+        pivots = self.data.get('pivots', [])
         
-        # 简化的中枢识别：找到价格重叠区域
-        all_strokes = up_strokes + down_strokes
-        if len(all_strokes) >= 3:
-            # 按时间排序
-            all_strokes.sort(key=lambda x: x.fx_a.dt if hasattr(x, 'fx_a') else datetime.min)
+        if not pivots:
+            return
+        
+        for i, pivot in enumerate(pivots):
+            # 绘制中枢区域
+            fig.add_shape(
+                type="rect",
+                xref="x", yref="y",
+                x0=pivot['start_dt'], y0=pivot['low'],
+                x1=pivot['end_dt'], y1=pivot['high'],
+                fillcolor="purple",
+                opacity=0.2,
+                layer="below",
+                line_width=0,
+                row=row, col=col
+            )
             
-            # 寻找中枢（3笔以上的重叠区域）
-            i = 0
-            pivot_count = 0
-            while i < len(all_strokes) - 2:
-                # 取连续3笔
-                stroke1 = all_strokes[i]
-                stroke2 = all_strokes[i + 1]
-                stroke3 = all_strokes[i + 2]
-                
-                if (hasattr(stroke1, 'fx_a') and hasattr(stroke1, 'fx_b') and
-                    hasattr(stroke2, 'fx_a') and hasattr(stroke2, 'fx_b') and
-                    hasattr(stroke3, 'fx_a') and hasattr(stroke3, 'fx_b')):
-                    
-                    # 计算价格范围
-                    all_prices = [
-                        stroke1.fx_a.fx, stroke1.fx_b.fx,
-                        stroke2.fx_a.fx, stroke2.fx_b.fx,
-                        stroke3.fx_a.fx, stroke3.fx_b.fx
-                    ]
-                    
-                    min_price = min(all_prices)
-                    max_price = max(all_prices)
-                    price_range = max_price - min_price
-                    avg_price = (max_price + min_price) / 2
-                    
-                    # 判断是否形成中枢（价格重叠度较高）
-                    if price_range < avg_price * 0.15:  # 价格区间小于平均价格的15%
-                        start_time = stroke1.fx_a.dt
-                        end_time = stroke3.fx_b.dt
-                        
-                        # 绘制中枢区域
-                        fig.add_shape(
-                            type="rect",
-                            xref="x", yref="y",
-                            x0=start_time, y0=min_price, x1=end_time, y1=max_price,
-                            fillcolor="purple", opacity=0.3, 
-                            line=dict(color="purple", width=2, dash="dot"),
-                            row=row, col=col
-                        )
-                        
-                        # 添加中枢标签
-                        if show_labels:
-                            fig.add_annotation(
-                                x=start_time + (end_time - start_time) / 2,
-                                y=max_price + (max_price - min_price) * 0.1,
-                                text=f"中枢{pivot_count + 1}",
-                                showarrow=False,
-                                font=dict(size=10, color="purple"),
-                                row=row, col=col
-                            )
-                        
-                        pivot_count += 1
-                        i += 3  # 跳过已处理的笔
-                    else:
-                        i += 1
-                else:
-                    i += 1
+            # 添加中枢边界线
+            fig.add_hline(
+                y=pivot['high'], 
+                line_dash="dash", 
+                line_color="purple", 
+                opacity=0.6,
+                row=row, col=col
+            )
+            fig.add_hline(
+                y=pivot['low'], 
+                line_dash="dash", 
+                line_color="purple", 
+                opacity=0.6,
+                row=row, col=col
+            )
+            
+            # 添加中枢标签
+            if show_labels:
+                fig.add_annotation(
+                    x=pivot['start_dt'] + (pivot['end_dt'] - pivot['start_dt']) / 2,
+                    y=pivot['center'],
+                    text=f"ZS{i+1}",
+                    showarrow=False,
+                    font=dict(size=10, color="white"),
+                    bgcolor="purple",
+                    bordercolor="purple",
+                    borderwidth=1,
+                    row=row, col=col
+                )
+            
+            # 添加到图例（只添加一次）
+            if i == 0:
+                fig.add_trace(go.Scatter(
+                    x=[pivot['start_dt']],
+                    y=[pivot['center']],
+                    mode='markers',
+                    marker=dict(
+                        size=0,  # 不显示标记
+                        color='purple'
+                    ),
+                    name='中枢区域',
+                    showlegend=True,
+                    legendgroup='pivots'
+                ), row=row, col=col)
 
     def _add_macd(self, fig, row, col):
         """添加MACD指标"""
@@ -548,8 +544,9 @@ class EnhancedChartGenerator:
         ), row=4, col=2)
         
         # 3. 中枢统计（右下）
-        # 简单计算中枢数量
-        pivot_count = max(0, len(strokes_data.get('up_strokes', [])) + len(strokes_data.get('down_strokes', [])) - 2) // 3
+        # 从分析结果中获取正确的中枢数量
+        pivots = self.data.get('pivots', [])
+        pivot_count = len(pivots)
         
         fig.add_trace(go.Bar(
             x=['中枢'],

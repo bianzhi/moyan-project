@@ -105,16 +105,30 @@ class AkshareDataSource(DataSourceBase):
             # 解析参数
             start_date = kwargs.get('start', '2024-01-01')
             end_date = kwargs.get('end', datetime.now().strftime('%Y-%m-%d'))
+            kline_level = kwargs.get('kline_level', '1d')  # 获取K线级别
             
             # 转换股票代码格式 (去掉后缀)
             clean_symbol = symbol.split('.')[0]
             
-            print(f"🔍 akshare获取数据: {clean_symbol}, {start_date} - {end_date}")
+            # 根据K线级别选择akshare的period参数
+            period_map = {
+                '1d': 'daily',
+                '1wk': 'weekly', 
+                '1mo': 'monthly',
+                # akshare不支持分钟级别数据，对于分钟级别使用日线数据
+                '15m': 'daily',
+                '30m': 'daily',
+                '1h': 'daily'
+            }
+            
+            period = period_map.get(kline_level, 'daily')
+            
+            print(f"🔍 akshare获取数据: {clean_symbol}, {start_date} - {end_date}, K线级别: {kline_level} -> {period}")
             
             # 调用akshare API
             data = self.ak.stock_zh_a_hist(
                 symbol=clean_symbol,
-                period="daily",
+                period=period,
                 start_date=start_date.replace('-', ''),  # akshare需要YYYYMMDD格式
                 end_date=end_date.replace('-', ''),
                 adjust=""  # 不复权
@@ -148,6 +162,10 @@ class AkshareDataSource(DataSourceBase):
                 'Close': data['Close'],
                 'Volume': data['Volume']
             })
+            
+            # 对于分钟级别数据，给出警告
+            if kline_level in ['15m', '30m', '1h']:
+                print(f"⚠️ akshare不支持{kline_level}级别数据，已降级使用日线数据")
             
             print(f"✅ akshare处理后数据: {result.shape}")
             return result

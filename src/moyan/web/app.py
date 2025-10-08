@@ -467,12 +467,12 @@ def display_analysis_results(result, display_options):
 
 def create_analysis_tabs(data):
     """创建分析结果标签页"""
-    tab1, tab2, tab3, tab4 = st.tabs(["📊 基本信息", "🎯 分型分析", "📈 笔线段", "🔍 买卖点"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["📊 基本信息", "🎯 分型分析", "📈 笔线段", "🏛️ 中枢分析", "🔍 买卖点"])
     
     with tab1:
         st.write("### 📊 股票基本信息")
         info_data = {
-            "项目": ["股票代码", "股票名称", "数据开始", "数据结束", "总K线数", "分型数量", "笔数量", "线段数量"],
+            "项目": ["股票代码", "股票名称", "数据开始", "数据结束", "总K线数", "分型数量", "笔数量", "线段数量", "中枢数量"],
             "值": [
                 data.get('stock_code', 'N/A'),
                 data.get('stock_name', 'N/A'),
@@ -481,7 +481,8 @@ def create_analysis_tabs(data):
                 data.get('total_bars', 'N/A'),
                 data.get('fx_count', 'N/A'),
                 data.get('bi_count', 'N/A'),
-                data.get('xd_count', 'N/A')
+                data.get('xd_count', 'N/A'),
+                data.get('pivot_count', 'N/A')
             ]
         }
         st.table(pd.DataFrame(info_data))
@@ -516,6 +517,39 @@ def create_analysis_tabs(data):
                 st.write("暂无线段数据")
     
     with tab4:
+        st.write("### 🏛️ 中枢分析")
+        st.write("中枢是缠论的核心概念，表示价格在一定区间内的震荡整理。")
+        
+        pivots = data.get('pivots', [])
+        pivot_count = data.get('pivot_count', 0)
+        
+        if pivot_count > 0:
+            st.write(f"- 总计识别 **{pivot_count}** 个中枢")
+            st.write("- 中枢用紫色半透明区域表示")
+            st.write("- 中枢的形成需要至少3笔的价格重叠")
+            
+            if pivots:
+                st.write("**中枢详情**")
+                for i, pivot in enumerate(pivots, 1):
+                    duration = (pivot['end_dt'] - pivot['start_dt']).days
+                    price_range = pivot['high'] - pivot['low']
+                    range_pct = (price_range / pivot['center']) * 100
+                    
+                    with st.expander(f"中枢 {i} - {pivot.get('type', '标准中枢')}"):
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            st.write(f"**时间范围**: {pivot['start_dt'].strftime('%Y-%m-%d')} ~ {pivot['end_dt'].strftime('%Y-%m-%d')}")
+                            st.write(f"**持续时间**: {duration} 天")
+                            st.write(f"**参与笔数**: {pivot.get('bi_count', 3)} 笔")
+                        with col2:
+                            st.write(f"**价格区间**: {pivot['low']:.2f} ~ {pivot['high']:.2f}")
+                            st.write(f"**中枢中心**: {pivot['center']:.2f}")
+                            st.write(f"**波动幅度**: {range_pct:.2f}%")
+        else:
+            st.write("- 暂未识别到有效中枢")
+            st.write("- 中枢的形成需要足够的笔数量和价格重叠")
+    
+    with tab5:
         st.write("### 🔍 买卖点分析")
         st.write("根据缠论理论识别的买卖点信号。")
         

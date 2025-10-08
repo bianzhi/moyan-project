@@ -165,7 +165,8 @@ class AutoAnalyzer:
             data, source_name = data_manager.get_stock_data(
                 stock_code=stock_code,
                 start_date=start_date_formatted,
-                end_date=end_date_formatted
+                end_date=end_date_formatted,
+                kline_level=self.kline_level  # 传递K线级别参数
             )
             
             if data is not None and len(data) > 0:
@@ -552,6 +553,9 @@ class AutoAnalyzer:
         else:
             xd_count = self.analysis_result.get('segments', {}).get('total_count', 0)
         
+        # 获取正确的中枢数量
+        pivot_count = len(self.analysis_result.get('pivots', []))
+        
         self.analysis_result.update({
             'stock_code': self.stock_code,
             'stock_name': self.stock_name,
@@ -561,40 +565,108 @@ class AutoAnalyzer:
             'fx_count': len(self.c.fx_list) if self.c else 0,
             'bi_count': len(self.c.bi_list) if self.c else 0,
             'xd_count': xd_count,
+            'pivot_count': pivot_count,  # 添加中枢数量
             'raw_df': self.df,
         })
-    def _draw_pivot_zones(self, ax):
-        """绘制中枢区域"""
+    def analyze_pivots(self):
+        """分析中枢"""
+        print("🔍 分析中枢...")
+        
         if len(self.c.bi_list) < 3:
+            print("  ⚠️ 笔数量不足，无法识别中枢")
+            self.analysis_result['pivots'] = []
             return
         
-        # 简化的中枢识别：寻找价格重叠区域
-        pivot_zones = []
-        for i in range(len(self.c.bi_list) - 2):
+        # 使用更准确的中枢识别算法
+        pivots = []
+        i = 0
+        while i < len(self.c.bi_list) - 2:
+            # 取连续三笔
             bi1 = self.c.bi_list[i]
-            bi2 = self.c.bi_list[i + 1]
+            bi2 = self.c.bi_list[i + 1] 
             bi3 = self.c.bi_list[i + 2]
             
-            # 获取三笔的价格范围
-            prices = [bi1.fx_a.fx, bi1.fx_b.fx, bi2.fx_a.fx, bi2.fx_b.fx, bi3.fx_a.fx, bi3.fx_b.fx]
-            min_price = min(prices)
-            max_price = max(prices)
+            # 获取三笔的高低点
+            high1 = max(bi1.fx_a.fx, bi1.fx_b.fx)
+            low1 = min(bi1.fx_a.fx, bi1.fx_b.fx)
+            high2 = max(bi2.fx_a.fx, bi2.fx_b.fx)
+            low2 = min(bi2.fx_a.fx, bi2.fx_b.fx)
+            high3 = max(bi3.fx_a.fx, bi3.fx_b.fx)
+            low3 = min(bi3.fx_a.fx, bi3.fx_b.fx)
             
-            # 检查是否有重叠（简化判断）
-            if max_price - min_price < (max_price + min_price) * 0.1:  # 重叠度阈值
-                pivot_zones.append({
-                    'start_time': bi1.fx_a.dt,
-                    'end_time': bi3.fx_b.dt,
-                    'high': max_price,
-                    'low': min_price
-                })
+            # 计算重叠区间
+            overlap_high = min(high1, high2, high3)
+            overlap_low = max(low1, low2, low3)
+            
+            # 判断是否形成有效中枢（有重叠区间）
+            if overlap_high > overlap_low:
+                # 检查重叠区间的有效性（不能太小）
+                overlap_ratio = (overlap_high - overlap_low) / ((high1 + high2 + high3) / 3)
+                if overlap_ratio > 0.02:  # 重叠区间至少占平均价格的2%
+                    pivot = {
+                        'start_dt': bi1.fx_a.dt,
+                        'end_dt': bi3.fx_b.dt, 
+                        'high': overlap_high,
+                        'low': overlap_low,
+                        'center': (overlap_high + overlap_low) / 2,
+                        'range': overlap_high - overlap_low,
+                        'bi_count': 3,  # 初始为3笔
+                        'type': '三笔中枢'
+                    }
+                    
+                    # 尝试扩展中枢（寻找更多参与的笔）
+                    j = i + 3
+                    while j < len(self.c.bi_list):
+                        next_bi = self.c.bi_list[j]
+                        next_high = max(next_bi.fx_a.fx, next_bi.fx_b.fx)
+                        next_low = min(next_bi.fx_a.fx, next_bi.fx_b.fx)
+                        
+                        # 检查是否与中枢重叠
+                        if next_low < overlap_high and next_high > overlap_low:
+                            pivot['end_dt'] = next_bi.fx_b.dt
+                            pivot['bi_count'] += 1
+                            j += 1
+                        else:
+                            break
+                    
+                    # 更新中枢类型
+                    if pivot['bi_count'] >= 5:
+                        pivot['type'] = '扩展中枢'
+                    elif pivot['bi_count'] >= 3:
+                        pivot['type'] = '标准中枢'
+                    
+                    pivots.append(pivot)
+                    i = j  # 跳过已处理的笔
+                else:
+                    i += 1
+            else:
+                i += 1
+        
+        self.analysis_result['pivots'] = pivots
+        print(f"  📊 识别中枢: {len(pivots)} 个")
+        
+        if pivots:
+            for i, pivot in enumerate(pivots, 1):
+                duration = (pivot['end_dt'] - pivot['start_dt']).days
+                print(f"  中枢{i}: {pivot['start_dt'].strftime('%Y-%m-%d')} ~ {pivot['end_dt'].strftime('%Y-%m-%d')} ({duration}天, {pivot['bi_count']}笔, {pivot['type']})")
+    
+    def _draw_pivot_zones(self, ax):
+        """绘制中枢区域"""
+        pivots = self.analysis_result.get('pivots', [])
         
         # 绘制中枢区域
-        for i, zone in enumerate(pivot_zones):
-            ax.fill_between([zone['start_time'], zone['end_time']], 
-                           zone['low'], zone['high'], 
+        for i, pivot in enumerate(pivots):
+            ax.fill_between([pivot['start_dt'], pivot['end_dt']], 
+                           pivot['low'], pivot['high'], 
                            alpha=0.2, color='purple', 
                            label='中枢区域' if i == 0 else "")
+            
+            # 添加中枢标签
+            ax.text(pivot['start_dt'] + (pivot['end_dt'] - pivot['start_dt'])/2, 
+                   pivot['center'], f'ZS{i+1}', 
+                   ha='center', va='center', fontsize=8, 
+                   bbox=dict(boxstyle='round,pad=0.2', facecolor='purple', alpha=0.7, edgecolor='none'),
+                   color='white', fontweight='bold')
     
     def _draw_divergence_points(self, ax):
         """绘制背驰点"""
@@ -1042,6 +1114,7 @@ class AutoAnalyzer:
             self.analyze_fractals()
             self.analyze_strokes()
             self.analyze_segments()
+            self.analyze_pivots()  # 添加中枢分析
             self.analyze_divergence()
             self.analyze_buy_sell_points()
             self.analyze_current_status()
