@@ -5,7 +5,7 @@
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
 import numpy as np
 
 class EnhancedChartGenerator:
@@ -22,34 +22,131 @@ class EnhancedChartGenerator:
         if self.df is None:
             raise ValueError("原始数据不可用")
         
+        # 数据完整性校验和清理
+        self.trading_df = self._validate_and_clean_data()
+        
+        print(f"Debug: 原始数据 {len(self.df)} 条，校验后数据 {len(self.trading_df)} 条")  # 调试输出
+
+    def _validate_and_clean_data(self):
+        """
+        数据完整性校验和清理
+        
+        Returns:
+            pd.DataFrame: 清理后的数据
+        """
+        df = self.df.copy()
+        
         # 确保df的索引是datetime类型
-        if not isinstance(self.df.index, pd.DatetimeIndex):
-            self.df.index = pd.to_datetime(self.df.index)
+        if not isinstance(df.index, pd.DatetimeIndex):
+            df.index = pd.to_datetime(df.index)
         
-        # 过滤掉非交易日（成交量为0或NaN的日期）
-        if 'Volume' in self.df.columns:
-            self.trading_df = self.df[self.df['Volume'] > 0].copy()
+        # 1. 检查必要列是否存在
+        required_columns = ['Open', 'High', 'Low', 'Close']
+        missing_columns = [col for col in required_columns if col not in df.columns]
+        if missing_columns:
+            raise ValueError(f"缺少必要的数据列: {missing_columns}")
+        
+        # 2. 移除空值行
+        original_length = len(df)
+        df = df.dropna(subset=required_columns)
+        
+        if len(df) < original_length:
+            print(f"⚠️ 移除了 {original_length - len(df)} 行空值数据")
+        
+        # 3. 检查数据有效性
+        invalid_rows = df[
+            (df['High'] < df['Low']) |  # 最高价小于最低价
+            (df['Open'] <= 0) |        # 开盘价小于等于0
+            (df['High'] <= 0) |        # 最高价小于等于0
+            (df['Low'] <= 0) |         # 最低价小于等于0
+            (df['Close'] <= 0)         # 收盘价小于等于0
+        ]
+        
+        if len(invalid_rows) > 0:
+            print(f"⚠️ 发现 {len(invalid_rows)} 行无效数据，已移除")
+            df = df.drop(invalid_rows.index)
+        
+        # 4. 过滤交易日数据
+        if 'Volume' in df.columns:
+            # 使用成交量过滤交易日，但保留成交量为0但价格有变化的数据
+            trading_mask = (df['Volume'] > 0) | (df['Close'] != df['Open'])
+            df = df[trading_mask].copy()
         else:
-            # 如果没有成交量数据，使用价格变化来判断交易日
-            self.trading_df = self.df.dropna(subset=['Close']).copy()
+            # 如果没有成交量数据，确保价格数据有效
+            df = df.dropna(subset=['Close']).copy()
         
-        print(f"Debug: 原始数据 {len(self.df)} 条，过滤后交易日数据 {len(self.trading_df)} 条")  # 调试输出
+        # 5. 检查价格异常值（价格变化超过50%的数据点）
+        if len(df) > 1:
+            df_sorted = df.sort_index()
+            price_changes = df_sorted['Close'].pct_change().abs()
+            abnormal_changes = price_changes > 0.5  # 50%的变化
+            
+            if abnormal_changes.sum() > 0:
+                print(f"⚠️ 发现 {abnormal_changes.sum()} 个异常价格变化点")
+                # 标记为可疑数据但不删除
+                df.loc[abnormal_changes, 'suspicious'] = True
+        
+        # 6. 确保数据按时间排序
+        df = df.sort_index()
+        
+        # 7. 检查时间连续性（仅对分钟级数据）
+        if self.kline_level in ['1h', '30m', '15m', '5m', '2m', '1m']:
+            self._check_time_continuity(df)
+        
+        # 8. 最终验证：确保至少有最小数量的数据点
+        min_data_points = 10
+        if len(df) < min_data_points:
+            raise ValueError(f"数据量不足，至少需要 {min_data_points} 个数据点，实际只有 {len(df)} 个")
+        
+        return df
+    
+    def _check_time_continuity(self, df):
+        """
+        检查时间连续性
+        
+        Args:
+            df: 数据DataFrame
+        """
+        if len(df) < 2:
+            return
+        
+        # 计算时间间隔
+        time_diffs = df.index.to_series().diff()[1:]
+        
+        # 根据K线级别确定预期间隔
+        expected_intervals = {
+            '1h': timedelta(hours=1),
+            '30m': timedelta(minutes=30),
+            '15m': timedelta(minutes=15),
+            '5m': timedelta(minutes=5),
+            '2m': timedelta(minutes=2),
+            '1m': timedelta(minutes=1)
+        }
+        
+        if self.kline_level in expected_intervals:
+            expected_interval = expected_intervals[self.kline_level]
+            
+            # 允许一定的时间误差（考虑交易时间和节假日）
+            tolerance = expected_interval * 0.1  # 10%的误差
+            
+            # 找出时间间隔异常的点
+            abnormal_intervals = time_diffs[
+                (time_diffs < expected_interval - tolerance) |
+                (time_diffs > expected_interval * 5)  # 超过5倍间隔认为是异常
+            ]
+            
+            if len(abnormal_intervals) > 0:
+                print(f"⚠️ 发现 {len(abnormal_intervals)} 个时间间隔异常点")
+                # 可以选择填充缺失的时间点或标记异常
 
     def _get_x_data(self):
-        """获取优化的X轴数据，避免时间间隙"""
+        """获取优化的X轴数据，不显示日期，使用序号"""
         if self.kline_level in ['1h', '30m', '15m', '5m', '2m', '1m']:
-            # 对于分钟级别数据，使用简化的时间标签
-            # 只显示关键时间点，避免密集恐惧症
-            data_count = len(self.trading_df)
-            if data_count > 100:
-                # 数据量大时，只显示月-日
-                return [dt.strftime('%m-%d') for dt in self.trading_df.index]
-            else:
-                # 数据量少时，显示月-日 小时
-                return [dt.strftime('%m-%d %H时') for dt in self.trading_df.index]
+            # 分钟级别数据：使用序号，避免日期显示
+            return list(range(len(self.trading_df)))
         else:
-            # 日线及以上级别使用原始时间索引
-            return self.trading_df.index
+            # 日线及以上级别：也使用序号，去掉日期
+            return list(range(len(self.trading_df)))
 
     def _add_candlestick(self, fig, row, col):
         """添加K线图（中国股市红涨绿跌配色，剔除非交易日）"""
@@ -722,12 +819,12 @@ class EnhancedChartGenerator:
             xaxis_rangeslider_visible=False,
         )
         
-        # 配置时间轴 - 简洁美观，避免密集恐惧症
+        # 配置时间轴 - 不显示日期，使用序号
         if self.kline_level in ['1h', '30m', '15m', '5m', '2m', '1m']:
-            # 为分钟级别数据创建简洁的时间轴
+            # 为分钟级别数据创建简洁的序号轴
             data_count = len(self.trading_df)
             
-            # 大幅减少标签数量，只显示关键时间点
+            # 大幅减少标签数量，只显示关键序号点
             if data_count <= 50:
                 tick_count = 5  # 最多5个标签
             elif data_count <= 100:
@@ -736,33 +833,33 @@ class EnhancedChartGenerator:
                 tick_count = 8  # 最多8个标签，避免过密
             
             fig.update_xaxes(
-                type='category',  # 使用category类型避免时间间隙
-                categoryorder='category ascending',
+                type='linear',  # 使用数字序号
                 tickangle=0,  # 水平显示，更简洁
                 showgrid=False,  # 去掉网格线
-                # 确保显示首尾和关键时间点
+                # 确保显示首尾和关键序号点
                 tickmode='array',
                 tickvals=[i * (data_count - 1) // (tick_count - 1) for i in range(tick_count)],
+                ticktext=[str(i * (data_count - 1) // (tick_count - 1)) for i in range(tick_count)],
                 tickfont=dict(size=10, color='#666666'),  # 淡化字体颜色
                 showline=True,
                 linewidth=1,
-                linecolor='#e0e0e0'
+                linecolor='#e0e0e0',
+                title_text="数据序号"
             )
         else:
-            # 日线及以上级别保持简洁设置
+            # 日线及以上级别也使用序号
+            data_count = len(self.trading_df)
             fig.update_xaxes(
+                type='linear',  # 使用数字序号
                 showgrid=False,  # 去掉网格线
-                # 移除非交易日的间隙
-                rangebreaks=[
-                    dict(bounds=["sat", "mon"]),  # 隐藏周末
-                ],
-                # 简化时间标签
+                # 简化序号标签
                 tickmode='linear',
                 nticks=8,  # 减少标签数量
                 tickfont=dict(size=10, color='#666666'),
                 showline=True,
                 linewidth=1,
-                linecolor='#e0e0e0'
+                linecolor='#e0e0e0',
+                title_text="数据序号"
             )
         
         # 配置Y轴 - 简洁美观
