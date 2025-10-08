@@ -231,12 +231,273 @@ class YFinanceDataSource(DataSourceBase):
         print("❌ yfinance所有重试均失败")
         return None
 
+class BaostockDataSource(DataSourceBase):
+    """Baostock数据源 - 免费的A股数据源，支持分钟级别"""
+    
+    def __init__(self):
+        super().__init__("baostock", priority=2)  # 中等优先级，介于akshare和yfinance之间
+        self._check_availability()
+    
+    def _check_availability(self) -> bool:
+        """检查baostock是否可用"""
+        try:
+            import baostock as bs
+            self.bs = bs
+            self.available = True
+            return True
+        except ImportError:
+            warnings.warn("baostock未安装，请运行: pip install baostock")
+            self.available = False
+            return False
+        except Exception as e:
+            print(f"⚠️ baostock初始化失败: {e}")
+            self.available = False
+            return False
+    
+    def _fetch_data(self, symbol: str, **kwargs) -> Optional[pd.DataFrame]:
+        """使用baostock获取股票数据"""
+        try:
+            # 登录baostock
+            lg = self.bs.login()
+            if lg.error_code != '0':
+                print(f"❌ baostock登录失败: {lg.error_msg}")
+                return None
+            
+            # 解析参数
+            start_date = kwargs.get('start', '2024-01-01')
+            end_date = kwargs.get('end', datetime.now().strftime('%Y-%m-%d'))
+            kline_level = kwargs.get('kline_level', '1d')
+            
+            # 转换股票代码格式 (添加市场前缀)
+            clean_symbol = symbol.split('.')[0]
+            if clean_symbol.startswith('6'):
+                bs_symbol = f"sh.{clean_symbol}"  # 上海
+            else:
+                bs_symbol = f"sz.{clean_symbol}"  # 深圳
+            
+            # 根据K线级别选择baostock的frequency参数
+            frequency_map = {
+                '1d': 'd',    # 日线
+                '1wk': 'w',   # 周线
+                '1mo': 'm',   # 月线
+                '5m': '5',    # 5分钟
+                '15m': '15',  # 15分钟
+                '30m': '30',  # 30分钟
+                '1h': '60'    # 60分钟
+            }
+            
+            frequency = frequency_map.get(kline_level, 'd')
+            
+            print(f"🔍 baostock获取数据: {bs_symbol}, {start_date} - {end_date}, 频率: {frequency}")
+            
+            # 调用baostock API
+            if frequency in ['5', '15', '30', '60']:
+                # 分钟级别数据
+                rs = self.bs.query_history_k_data_plus(
+                    bs_symbol,
+                    "date,time,code,open,high,low,close,volume,amount",
+                    start_date=start_date.replace('-', ''),
+                    end_date=end_date.replace('-', ''),
+                    frequency=frequency,
+                    adjustflag="3"  # 不复权
+                )
+            else:
+                # 日线级别数据
+                rs = self.bs.query_history_k_data_plus(
+                    bs_symbol,
+                    "date,code,open,high,low,close,preclose,volume,amount,adjustflag,turn,tradestatus,pctChg,isST",
+                    start_date=start_date.replace('-', ''),
+                    end_date=end_date.replace('-', ''),
+                    frequency=frequency,
+                    adjustflag="3"  # 不复权
+                )
+            
+            if rs.error_code != '0':
+                print(f"❌ baostock查询失败: {rs.error_msg}")
+                self.bs.logout()
+                return None
+            
+            # 获取数据列表
+            data_list = []
+            while (rs.error_code == '0') & rs.next():
+                data_list.append(rs.get_row_data())
+            
+            # 登出
+            self.bs.logout()
+            
+            if not data_list:
+                print("⚠️ baostock返回空数据")
+                return None
+            
+            # 转换为DataFrame
+            if frequency in ['5', '15', '30', '60']:
+                # 分钟级别数据
+                columns = ["date", "time", "code", "open", "high", "low", "close", "volume", "amount"]
+                df = pd.DataFrame(data_list, columns=columns)
+                # 合并日期和时间
+                df['datetime'] = pd.to_datetime(df['date'] + ' ' + df['time'])
+                df = df.set_index('datetime')
+            else:
+                # 日线级别数据
+                columns = ["date", "code", "open", "high", "low", "close", "preclose", "volume", "amount", "adjustflag", "turn", "tradestatus", "pctChg", "isST"]
+                df = pd.DataFrame(data_list, columns=columns)
+                df['date'] = pd.to_datetime(df['date'])
+                df = df.set_index('date')
+            
+            # 标准化列名和数据类型
+            result = pd.DataFrame({
+                'Open': pd.to_numeric(df['open'], errors='coerce'),
+                'High': pd.to_numeric(df['high'], errors='coerce'),
+                'Low': pd.to_numeric(df['low'], errors='coerce'),
+                'Close': pd.to_numeric(df['close'], errors='coerce'),
+                'Volume': pd.to_numeric(df['volume'], errors='coerce')
+            })
+            
+            # 过滤无效数据
+            result = result.dropna()
+            
+            print(f"✅ baostock处理后数据: {result.shape}")
+            return result
+            
+        except Exception as e:
+            print(f"❌ baostock详细错误: {e}")
+            import traceback
+            traceback.print_exc()
+            try:
+                self.bs.logout()
+            except:
+                pass
+            return None
+
+
+class EastmoneyDataSource(DataSourceBase):
+    """东方财富数据源 - 通过爬虫获取分钟级别数据"""
+    
+    def __init__(self):
+        super().__init__("eastmoney", priority=4)  # 较低优先级
+        self._check_availability()
+    
+    def _check_availability(self) -> bool:
+        """检查requests是否可用"""
+        try:
+            import requests
+            self.requests = requests
+            self.available = True
+            return True
+        except ImportError:
+            warnings.warn("requests未安装，请运行: pip install requests")
+            self.available = False
+            return False
+    
+    def _fetch_data(self, symbol: str, **kwargs) -> Optional[pd.DataFrame]:
+        """使用东方财富API获取分钟级别数据"""
+        try:
+            # 解析参数
+            kline_level = kwargs.get('kline_level', '1d')
+            
+            # 只支持分钟级别数据
+            if kline_level not in ['5m', '15m', '30m', '1h']:
+                print(f"⚠️ eastmoney暂不支持{kline_level}级别数据")
+                return None
+            
+            # 转换股票代码格式
+            clean_symbol = symbol.split('.')[0]
+            if clean_symbol.startswith('6'):
+                em_symbol = f"1.{clean_symbol}"  # 上海
+            else:
+                em_symbol = f"0.{clean_symbol}"  # 深圳
+            
+            # 频率映射
+            klt_map = {
+                '5m': '5',
+                '15m': '15', 
+                '30m': '30',
+                '1h': '60'
+            }
+            
+            klt = klt_map.get(kline_level, '30')
+            
+            print(f"🔍 eastmoney获取数据: {em_symbol}, K线级别: {kline_level}")
+            
+            # 构造请求URL (这是一个示例，实际使用时需要验证API的有效性)
+            url = f"http://push2his.eastmoney.com/api/qt/stock/kline/get"
+            params = {
+                'secid': em_symbol,
+                'ut': 'fa5fd1943c7b386f172d6893dbfba10b',
+                'fields1': 'f1,f2,f3,f4,f5,f6',
+                'fields2': 'f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61',
+                'klt': klt,
+                'fqt': '1',
+                'end': '20500101',
+                'lmt': '1000'  # 限制1000条数据
+            }
+            
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'Referer': 'http://quote.eastmoney.com/'
+            }
+            
+            response = self.requests.get(url, params=params, headers=headers, timeout=10)
+            
+            if response.status_code != 200:
+                print(f"❌ eastmoney请求失败: HTTP {response.status_code}")
+                return None
+            
+            data = response.json()
+            
+            if not data or 'data' not in data or not data['data']:
+                print("⚠️ eastmoney返回空数据")
+                return None
+            
+            klines = data['data']['klines']
+            if not klines:
+                print("⚠️ eastmoney K线数据为空")
+                return None
+            
+            # 解析K线数据
+            records = []
+            for kline in klines:
+                parts = kline.split(',')
+                if len(parts) >= 6:
+                    records.append({
+                        'datetime': pd.to_datetime(parts[0]),
+                        'open': float(parts[1]),
+                        'close': float(parts[2]), 
+                        'high': float(parts[3]),
+                        'low': float(parts[4]),
+                        'volume': float(parts[5])
+                    })
+            
+            if not records:
+                print("⚠️ eastmoney解析后数据为空")
+                return None
+            
+            # 转换为DataFrame
+            df = pd.DataFrame(records)
+            df = df.set_index('datetime')
+            
+            # 标准化列名
+            result = pd.DataFrame({
+                'Open': df['open'],
+                'High': df['high'],
+                'Low': df['low'],
+                'Close': df['close'],
+                'Volume': df['volume']
+            })
+            
+            print(f"✅ eastmoney处理后数据: {result.shape}")
+            return result
+            
+        except Exception as e:
+            print(f"❌ eastmoney详细错误: {e}")
+            return None
+
 class TushareDataSource(DataSourceBase):
     """Tushare数据源"""
     
     def __init__(self, token: Optional[str] = None):
-        super().__init__("tushare", priority=2)
-        self.token = token
+        super().__init__("tushare", priority=5)  # 较低优先级，需要token
+        self.token = token or os.environ.get("TUSHARE_TOKEN")
         self._check_availability()
     
     def _check_availability(self) -> bool:
@@ -288,17 +549,25 @@ class MultiDataSourceManager:
     
     def _init_data_sources(self):
         """初始化所有数据源"""
-        # 1. Akshare - 免费且稳定
+        # 1. Akshare - 免费且稳定，但不支持分钟级别
         akshare_source = AkshareDataSource()
         self.data_sources.append(akshare_source)
         
-        # 2. Tushare - 需要token
+        # 2. Baostock - 免费且支持分钟级别数据
+        baostock_source = BaostockDataSource()
+        self.data_sources.append(baostock_source)
+        
+        # 3. Tushare - 需要token，数据质量高
         tushare_token = self.config.get('tushare_token')
         if tushare_token:
             tushare_source = TushareDataSource(tushare_token)
             self.data_sources.append(tushare_source)
         
-        # 3. YFinance - 容易被限流，优先级最低
+        # 4. Eastmoney - 爬虫方式，仅分钟级别
+        eastmoney_source = EastmoneyDataSource()
+        self.data_sources.append(eastmoney_source)
+        
+        # 5. YFinance - 容易被限流，优先级最低
         yfinance_source = YFinanceDataSource()
         self.data_sources.append(yfinance_source)
     
@@ -355,6 +624,14 @@ class MultiDataSourceManager:
                     # akshare使用6位代码
                     clean_symbol = symbol.split('.')[0]
                     data = data_source.get_data(clean_symbol, **params)
+                elif data_source.name == "baostock":
+                    # baostock使用6位代码
+                    clean_symbol = symbol.split('.')[0]
+                    data = data_source.get_data(clean_symbol, **params)
+                elif data_source.name == "eastmoney":
+                    # eastmoney使用6位代码
+                    clean_symbol = symbol.split('.')[0]
+                    data = data_source.get_data(clean_symbol, **params)
                 elif data_source.name == "yfinance":
                     # yfinance需要interval参数而不是kline_level，并且需要完整的symbol格式
                     yf_params = {
@@ -398,16 +675,26 @@ class MultiDataSourceManager:
     
     def _get_ordered_sources_by_kline_level(self, kline_level: str) -> List:
         """根据K线级别返回优先级排序的数据源列表"""
-        # 分钟级别数据：yfinance优先（支持分钟级别），akshare降级到日线
+        # 分钟级别数据：优先使用支持分钟级别的数据源
         if kline_level in ['15m', '30m', '1h', '5m', '2m', '1m']:
-            print(f"🔄 检测到分钟级别数据({kline_level})，调整数据源优先级：yfinance > akshare")
-            # 重新排序：yfinance优先
-            yfinance_sources = [ds for ds in self.data_sources if ds.name == "yfinance"]
-            other_sources = [ds for ds in self.data_sources if ds.name != "yfinance"]
-            return yfinance_sources + other_sources
+            print(f"🔄 检测到分钟级别数据({kline_level})，调整数据源优先级：baostock > yfinance > eastmoney > akshare")
+            # 重新排序：支持分钟级别的数据源优先
+            minute_sources = []
+            other_sources = []
+            
+            for ds in self.data_sources:
+                if ds.name in ["baostock", "yfinance", "eastmoney"]:
+                    minute_sources.append(ds)
+                else:
+                    other_sources.append(ds)
+            
+            # 按优先级排序分钟级别数据源：baostock(2) > yfinance(3) > eastmoney(4)
+            minute_sources.sort(key=lambda x: x.priority)
+            
+            return minute_sources + other_sources
         else:
             # 日线、周线、月线：akshare优先（更稳定，不限流）
-            print(f"🔄 检测到日线级别数据({kline_level})，使用默认优先级：akshare > yfinance")
+            print(f"🔄 检测到日线级别数据({kline_level})，使用默认优先级：akshare > baostock > tushare > yfinance")
             return sorted(self.data_sources, key=lambda x: x.priority)
     
     def _format_symbol(self, stock_code: str) -> str:
