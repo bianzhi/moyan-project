@@ -152,10 +152,14 @@ class EnhancedChartGenerator:
         """获取优化的X轴数据，避免时间间隙但支持悬停显示日期"""
         if self.kline_level in ['1h', '30m', '15m', '5m', '2m', '1m']:
             # 分钟级别：使用序号避免间隙，但保留原始时间用于悬停显示
-            return list(range(len(self.trading_df)))
+            x_data = list(range(len(self.trading_df)))
         else:
             # 日线级别：使用序号避免间隙，但保留原始时间用于悬停显示  
-            return list(range(len(self.trading_df)))
+            x_data = list(range(len(self.trading_df)))
+        
+        # 调试输出：确保X轴数据一致性
+        print(f"Debug: X轴数据长度: {len(x_data)}, 范围: {x_data[0] if x_data else 'N/A'} - {x_data[-1] if x_data else 'N/A'}")
+        return x_data
 
     def _add_candlestick(self, fig, row, col):
         """添加K线图（中国股市红涨绿跌配色，剔除非交易日）"""
@@ -803,15 +807,16 @@ class EnhancedChartGenerator:
         # 创建专业布局：主图 + 成交量 + MACD + 统计面板
         fig = make_subplots(
             rows=4, cols=4,
-            shared_xaxes=True,
+            shared_xaxes=True,  # 确保X轴完全共享
+            shared_yaxes=False,  # Y轴不共享
             vertical_spacing=0.05,
             horizontal_spacing=0.05,
             row_heights=[0.5, 0.2, 0.2, 0.1],  # 主图、成交量、MACD、统计
             column_widths=[0.7, 0.1, 0.1, 0.1],  # 主要图表和统计面板
             specs=[
-                [{"colspan": 4}, None, None, None],  # 主图占满整行
-                [{"colspan": 4}, None, None, None],  # 成交量占满整行
-                [{"colspan": 4}, None, None, None],  # MACD占满整行
+                [{"colspan": 4, "secondary_y": False}, None, None, None],  # 主图占满整行
+                [{"colspan": 4, "secondary_y": False}, None, None, None],  # 成交量占满整行
+                [{"colspan": 4, "secondary_y": False}, None, None, None],  # MACD占满整行
                 [{}, {}, {}, {}]  # 统计面板分4列
             ],
             subplot_titles=[
@@ -942,7 +947,7 @@ class EnhancedChartGenerator:
             month_positions.append(data_count - 1)
             month_labels.append(time_indices[-1].strftime('%m月'))
         
-        # 配置X轴
+        # 配置X轴 - 确保所有子图完全对齐
         fig.update_xaxes(
             type='linear',  # 使用数字序号
             tickangle=0,  # 水平显示
@@ -954,13 +959,17 @@ class EnhancedChartGenerator:
             showline=True,
             linewidth=1,
             linecolor='#e0e0e0',
+            # 强制设置相同的X轴范围
+            range=[0, data_count - 1],
             # 十字线配置
             showspikes=True,  # 显示垂直十字线
             spikecolor="gray",
             spikesnap="cursor",
             spikemode="across",  # 十字线穿过所有子图
             spikethickness=1,
-            spikedash="solid"
+            spikedash="solid",
+            # 确保所有子图X轴同步
+            matches='x'
         )
         
         # 配置Y轴 - 简洁美观
