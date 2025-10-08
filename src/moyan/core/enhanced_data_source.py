@@ -419,7 +419,36 @@ class EastmoneyDataSource(DataSourceBase):
             
             print(f"🔍 eastmoney获取数据: {em_symbol}, K线级别: {kline_level}")
             
-            # 构造请求URL (这是一个示例，实际使用时需要验证API的有效性)
+            # 解析时间参数以获取更多历史数据
+            start_date = kwargs.get('start', '2024-01-01')
+            end_date = kwargs.get('end', datetime.now().strftime('%Y-%m-%d'))
+            
+            # 计算需要的数据条数（根据时间范围和K线级别）
+            from datetime import datetime as dt
+            start_dt = dt.strptime(start_date, '%Y-%m-%d')
+            end_dt = dt.strptime(end_date, '%Y-%m-%d')
+            days_diff = (end_dt - start_dt).days
+            
+            # 根据K线级别估算需要的数据条数
+            if kline_level == '1h':
+                # 1小时线：每天约8条（交易时间4小时），加上缓冲
+                estimated_bars = days_diff * 8 + 500
+            elif kline_level == '30m':
+                # 30分钟线：每天约16条，加上缓冲
+                estimated_bars = days_diff * 16 + 1000
+            elif kline_level == '15m':
+                # 15分钟线：每天约32条，加上缓冲
+                estimated_bars = days_diff * 32 + 2000
+            else:
+                # 5分钟线：每天约96条，加上缓冲
+                estimated_bars = days_diff * 96 + 5000
+            
+            # 限制最大数据条数，避免请求过大
+            lmt = min(estimated_bars, 10000)
+            
+            print(f"🔍 eastmoney估算需要数据: {estimated_bars}条，实际请求: {lmt}条")
+            
+            # 构造请求URL
             url = f"http://push2his.eastmoney.com/api/qt/stock/kline/get"
             params = {
                 'secid': em_symbol,
@@ -429,7 +458,7 @@ class EastmoneyDataSource(DataSourceBase):
                 'klt': klt,
                 'fqt': '1',
                 'end': '20500101',
-                'lmt': '1000'  # 限制1000条数据
+                'lmt': str(lmt)  # 动态调整数据条数
             }
             
             headers = {
@@ -490,6 +519,133 @@ class EastmoneyDataSource(DataSourceBase):
             
         except Exception as e:
             print(f"❌ eastmoney详细错误: {e}")
+            return None
+
+class SinaDataSource(DataSourceBase):
+    """新浪财经数据源 - 支持分钟级别数据"""
+    
+    def __init__(self):
+        super().__init__("sina", priority=1)  # 高优先级，仅次于akshare
+        self._check_availability()
+    
+    def _check_availability(self) -> bool:
+        """检查requests是否可用"""
+        try:
+            import requests
+            self.requests = requests
+            self.available = True
+            return True
+        except ImportError:
+            warnings.warn("requests未安装，请运行: pip install requests")
+            self.available = False
+            return False
+    
+    def _fetch_data(self, symbol: str, **kwargs) -> Optional[pd.DataFrame]:
+        """使用新浪财经API获取分钟级别数据"""
+        try:
+            # 解析参数
+            kline_level = kwargs.get('kline_level', '1d')
+            
+            # 只支持分钟级别数据
+            if kline_level not in ['5m', '15m', '30m', '1h']:
+                print(f"⚠️ sina暂不支持{kline_level}级别数据")
+                return None
+            
+            # 转换股票代码格式
+            clean_symbol = symbol.split('.')[0]
+            if clean_symbol.startswith('6'):
+                sina_symbol = f"sh{clean_symbol}"  # 上海
+            else:
+                sina_symbol = f"sz{clean_symbol}"  # 深圳
+            
+            # 频率映射
+            scale_map = {
+                '5m': '5',
+                '15m': '15', 
+                '30m': '30',
+                '1h': '60'
+            }
+            
+            scale = scale_map.get(kline_level, '30')
+            
+            print(f"🔍 sina获取数据: {sina_symbol}, K线级别: {kline_level}")
+            
+            # 计算需要的数据量
+            start_date = kwargs.get('start', '2024-01-01')
+            end_date = kwargs.get('end', datetime.now().strftime('%Y-%m-%d'))
+            
+            from datetime import datetime as dt
+            start_dt = dt.strptime(start_date, '%Y-%m-%d')
+            end_dt = dt.strptime(end_date, '%Y-%m-%d')
+            days_diff = (end_dt - start_dt).days
+            
+            # 新浪API通常返回最近的数据，我们尝试获取足够的数据
+            # 构造请求URL
+            url = f"https://quotes.sina.cn/cn/api/json_v2.php/CN_MarketDataService.getKLineData"
+            params = {
+                'symbol': sina_symbol,
+                'scale': scale,
+                'ma': 'no',
+                'datalen': min(days_diff * 4 + 500, 2000)  # 限制最大2000条
+            }
+            
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1',
+                'Referer': 'https://finance.sina.com.cn/'
+            }
+            
+            response = self.requests.get(url, params=params, headers=headers, timeout=10)
+            
+            if response.status_code != 200:
+                print(f"❌ sina请求失败: HTTP {response.status_code}")
+                return None
+            
+            # 解析JSON数据
+            data = response.json()
+            
+            if not data or not isinstance(data, list):
+                print("⚠️ sina返回空数据或格式错误")
+                return None
+            
+            # 解析K线数据
+            records = []
+            for item in data:
+                if isinstance(item, dict) and 'day' in item:
+                    try:
+                        records.append({
+                            'datetime': pd.to_datetime(item['day']),
+                            'open': float(item['open']),
+                            'high': float(item['high']),
+                            'low': float(item['low']),
+                            'close': float(item['close']),
+                            'volume': float(item.get('volume', 0))
+                        })
+                    except (ValueError, KeyError) as e:
+                        continue
+            
+            if not records:
+                print("⚠️ sina解析后数据为空")
+                return None
+            
+            # 转换为DataFrame
+            df = pd.DataFrame(records)
+            df = df.set_index('datetime')
+            df = df.sort_index()  # 按时间排序
+            
+            # 标准化列名
+            result = pd.DataFrame({
+                'Open': df['open'],
+                'High': df['high'],
+                'Low': df['low'],
+                'Close': df['close'],
+                'Volume': df['volume']
+            })
+            
+            print(f"✅ sina处理后数据: {result.shape}")
+            return result
+            
+        except Exception as e:
+            print(f"❌ sina详细错误: {e}")
             return None
 
 class TushareDataSource(DataSourceBase):
@@ -553,21 +709,25 @@ class MultiDataSourceManager:
         akshare_source = AkshareDataSource()
         self.data_sources.append(akshare_source)
         
-        # 2. Baostock - 免费且支持分钟级别数据
+        # 2. Sina - 新浪财经，支持分钟级别数据，稳定性好
+        sina_source = SinaDataSource()
+        self.data_sources.append(sina_source)
+        
+        # 3. Baostock - 免费且支持分钟级别数据
         baostock_source = BaostockDataSource()
         self.data_sources.append(baostock_source)
         
-        # 3. Tushare - 需要token，数据质量高
+        # 4. Tushare - 需要token，数据质量高
         tushare_token = self.config.get('tushare_token')
         if tushare_token:
             tushare_source = TushareDataSource(tushare_token)
             self.data_sources.append(tushare_source)
         
-        # 4. Eastmoney - 爬虫方式，仅分钟级别
+        # 5. Eastmoney - 爬虫方式，仅分钟级别
         eastmoney_source = EastmoneyDataSource()
         self.data_sources.append(eastmoney_source)
         
-        # 5. YFinance - 容易被限流，优先级最低
+        # 6. YFinance - 容易被限流，优先级最低
         yfinance_source = YFinanceDataSource()
         self.data_sources.append(yfinance_source)
     
@@ -624,6 +784,10 @@ class MultiDataSourceManager:
                     # akshare使用6位代码
                     clean_symbol = symbol.split('.')[0]
                     data = data_source.get_data(clean_symbol, **params)
+                elif data_source.name == "sina":
+                    # sina使用6位代码
+                    clean_symbol = symbol.split('.')[0]
+                    data = data_source.get_data(clean_symbol, **params)
                 elif data_source.name == "baostock":
                     # baostock使用6位代码
                     clean_symbol = symbol.split('.')[0]
@@ -677,24 +841,24 @@ class MultiDataSourceManager:
         """根据K线级别返回优先级排序的数据源列表"""
         # 分钟级别数据：优先使用支持分钟级别的数据源
         if kline_level in ['15m', '30m', '1h', '5m', '2m', '1m']:
-            print(f"🔄 检测到分钟级别数据({kline_level})，调整数据源优先级：baostock > yfinance > eastmoney > akshare")
+            print(f"🔄 检测到分钟级别数据({kline_level})，调整数据源优先级：sina > baostock > eastmoney > yfinance > akshare")
             # 重新排序：支持分钟级别的数据源优先
             minute_sources = []
             other_sources = []
             
             for ds in self.data_sources:
-                if ds.name in ["baostock", "yfinance", "eastmoney"]:
+                if ds.name in ["sina", "baostock", "eastmoney", "yfinance"]:
                     minute_sources.append(ds)
                 else:
                     other_sources.append(ds)
             
-            # 按优先级排序分钟级别数据源：baostock(2) > yfinance(3) > eastmoney(4)
+            # 按优先级排序分钟级别数据源：sina(1) > baostock(2) > eastmoney(4) > yfinance(3)
             minute_sources.sort(key=lambda x: x.priority)
             
             return minute_sources + other_sources
         else:
             # 日线、周线、月线：akshare优先（更稳定，不限流）
-            print(f"🔄 检测到日线级别数据({kline_level})，使用默认优先级：akshare > baostock > tushare > yfinance")
+            print(f"🔄 检测到日线级别数据({kline_level})，使用默认优先级：akshare > sina > baostock > tushare > yfinance")
             return sorted(self.data_sources, key=lambda x: x.priority)
     
     def _format_symbol(self, stock_code: str) -> str:
