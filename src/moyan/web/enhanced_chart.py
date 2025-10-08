@@ -837,7 +837,9 @@ class EnhancedChartGenerator:
         )
         
         # 为所有子图添加十字线配置
+        # 注意：Candlestick不支持connectgaps属性，只对line traces有效
         fig.update_traces(
+            selector=dict(type='scatter'),
             line=dict(width=1),
             connectgaps=False
         )
