@@ -271,7 +271,7 @@ def create_app():
             "天数",
             min_value=30,
             max_value=1000,
-            value=120,
+            value=365,
             step=30,
             help="获取最近N天的数据"
         )

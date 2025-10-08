@@ -295,10 +295,17 @@ class MultiDataSourceManager:
                       stock_code: str,
                       start_date: Optional[str] = None,
                       end_date: Optional[str] = None,
+                      kline_level: str = '1d',
                       **kwargs) -> Tuple[Optional[pd.DataFrame], str]:
         """
         获取股票数据，自动尝试多个数据源
         
+        Args:
+            stock_code: 股票代码
+            start_date: 开始日期 (YYYY-MM-DD)
+            end_date: 结束日期 (YYYY-MM-DD)
+            kline_level: K线级别 (1d, 30m, 1h等)
+            
         Returns:
             Tuple[DataFrame, str]: (数据, 使用的数据源名称)
         """
@@ -309,11 +316,13 @@ class MultiDataSourceManager:
         params = {
             'start': start_date or (datetime.now() - timedelta(days=365)).strftime('%Y-%m-%d'),
             'end': end_date or datetime.now().strftime('%Y-%m-%d'),
+            'kline_level': kline_level,  # 明确传递K线级别
             **kwargs
         }
         
         print(f"📊 尝试获取股票数据: {stock_code}")
         print(f"📅 时间范围: {params['start']} 至 {params['end']}")
+        print(f"📈 K线级别: {kline_level}")
         
         # 按优先级尝试各个数据源
         for i, data_source in enumerate(self.data_sources):
@@ -324,7 +333,20 @@ class MultiDataSourceManager:
             print(f"🔍 尝试数据源 {i+1}/{len(self.data_sources)}: {data_source.name}")
             
             try:
-                data = data_source.get_data(symbol, **params)
+                # 根据数据源类型传递不同的参数
+                if data_source.name == "akshare":
+                    data = data_source.get_data(symbol, **params)
+                elif data_source.name == "yfinance":
+                    # yfinance需要interval参数而不是kline_level
+                    yf_params = {
+                        'start': params['start'],
+                        'end': params['end'],
+                        'interval': self._get_yfinance_interval(kline_level)
+                    }
+                    data = data_source.get_data(symbol, **yf_params)
+                else:
+                    data = data_source.get_data(symbol, **params)
+                    
                 if data is not None and len(data) > 0:
                     print(f"✅ {data_source.name} 成功获取 {len(data)} 条数据")
                     return data, data_source.name
@@ -351,6 +373,21 @@ class MultiDataSourceManager:
             else:
                 return f"{stock_code}.SZ"  # 深圳
         return stock_code
+    
+    def _get_yfinance_interval(self, kline_level: str) -> str:
+        """将K线级别转换为yfinance的interval参数"""
+        interval_map = {
+            '1d': '1d',
+            '1wk': '1wk', 
+            '1mo': '1mo',
+            '30m': '30m',
+            '15m': '15m',
+            '1h': '1h',
+            '5m': '5m',
+            '2m': '2m',
+            '1m': '1m'
+        }
+        return interval_map.get(kline_level, '1d')
     
     def get_available_sources(self) -> List[str]:
         """获取可用的数据源列表"""

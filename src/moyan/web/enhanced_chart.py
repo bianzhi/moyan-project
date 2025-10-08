@@ -25,15 +25,24 @@ class EnhancedChartGenerator:
         # 确保df的索引是datetime类型
         if not isinstance(self.df.index, pd.DatetimeIndex):
             self.df.index = pd.to_datetime(self.df.index)
+        
+        # 过滤掉非交易日（成交量为0或NaN的日期）
+        if 'Volume' in self.df.columns:
+            self.trading_df = self.df[self.df['Volume'] > 0].copy()
+        else:
+            # 如果没有成交量数据，使用价格变化来判断交易日
+            self.trading_df = self.df.dropna(subset=['Close']).copy()
+        
+        print(f"Debug: 原始数据 {len(self.df)} 条，过滤后交易日数据 {len(self.trading_df)} 条")  # 调试输出
 
     def _add_candlestick(self, fig, row, col):
-        """添加K线图（中国股市红涨绿跌配色）"""
+        """添加K线图（中国股市红涨绿跌配色，剔除非交易日）"""
         fig.add_trace(go.Candlestick(
-            x=self.df.index,
-            open=self.df['Open'],
-            high=self.df['High'],
-            low=self.df['Low'],
-            close=self.df['Close'],
+            x=self.trading_df.index,
+            open=self.trading_df['Open'],
+            high=self.trading_df['High'],
+            low=self.trading_df['Low'],
+            close=self.trading_df['Close'],
             name='K线',
             increasing_line_color='red',
             increasing_fillcolor='red',
@@ -44,35 +53,24 @@ class EnhancedChartGenerator:
         ), row=row, col=col)
 
     def _add_volume(self, fig, row, col):
-        """添加成交量（剔除非交易日）"""
-        if 'Volume' in self.df.columns:
-            # 过滤掉成交量为0或NaN的日期（非交易日）
-            volume_data = self.df[self.df['Volume'] > 0].copy()
-            
-            if len(volume_data) > 0:
-                colors = ['red' if row['Close'] > row['Open'] else 'green' for _, row in volume_data.iterrows()]
-                fig.add_trace(go.Bar(
-                    x=volume_data.index,
-                    y=volume_data['Volume'],
-                    marker_color=colors,
-                    name='成交量',
-                    showlegend=False
-                ), row=row, col=col)
+        """添加成交量（使用过滤后的交易日数据）"""
+        if 'Volume' in self.trading_df.columns and len(self.trading_df) > 0:
+            colors = ['red' if row['Close'] > row['Open'] else 'green' for _, row in self.trading_df.iterrows()]
+            fig.add_trace(go.Bar(
+                x=self.trading_df.index,
+                y=self.trading_df['Volume'],
+                marker_color=colors,
+                name='成交量',
+                showlegend=False
+            ), row=row, col=col)
 
     def _add_ma(self, fig, row, col, periods=[5, 20]):
-        """添加移动平均线（剔除非交易日）"""
-        # 过滤掉成交量为0或NaN的日期（非交易日）
-        if 'Volume' in self.df.columns:
-            trading_data = self.df[self.df['Volume'] > 0].copy()
-        else:
-            # 如果没有成交量数据，使用价格变化来判断交易日
-            trading_data = self.df.dropna(subset=['Close']).copy()
-        
-        if len(trading_data) > 0:
+        """添加移动平均线（使用过滤后的交易日数据）"""
+        if len(self.trading_df) > 0:
             for p in periods:
-                ma = trading_data['Close'].rolling(window=p).mean()
+                ma = self.trading_df['Close'].rolling(window=p).mean()
                 fig.add_trace(go.Scatter(
-                    x=trading_data.index,
+                    x=self.trading_df.index,
                     y=ma,
                     mode='lines',
                     name=f'MA{p}',
@@ -445,61 +443,47 @@ class EnhancedChartGenerator:
                 ), row=row, col=col)
 
     def _add_macd(self, fig, row, col):
-        """添加MACD指标（剔除非交易日）"""
-        # 过滤掉成交量为0或NaN的日期（非交易日）
-        if 'Volume' in self.df.columns:
-            trading_data = self.df[self.df['Volume'] > 0].copy()
-        else:
-            # 如果没有成交量数据，使用价格变化来判断交易日
-            trading_data = self.df.dropna(subset=['Close']).copy()
-        
-        if len(trading_data) > 0:
+        """添加MACD指标（使用过滤后的交易日数据）"""
+        if len(self.trading_df) > 0:
             # 简化的MACD计算
-            ema12 = trading_data['Close'].ewm(span=12).mean()
-            ema26 = trading_data['Close'].ewm(span=26).mean()
+            ema12 = self.trading_df['Close'].ewm(span=12).mean()
+            ema26 = self.trading_df['Close'].ewm(span=26).mean()
             macd = ema12 - ema26
             signal = macd.ewm(span=9).mean()
             histogram = macd - signal
             
             fig.add_trace(go.Scatter(
-                x=trading_data.index, y=macd, 
+                x=self.trading_df.index, y=macd, 
                 mode='lines', name='MACD', 
                 line=dict(color='blue', width=1)
             ), row=row, col=col)
             
             fig.add_trace(go.Scatter(
-                x=trading_data.index, y=signal, 
+                x=self.trading_df.index, y=signal, 
                 mode='lines', name='Signal', 
                 line=dict(color='orange', width=1)
             ), row=row, col=col)
             
             colors = ['red' if val >= 0 else 'green' for val in histogram]
             fig.add_trace(go.Bar(
-                x=trading_data.index, y=histogram, 
+                x=self.trading_df.index, y=histogram, 
                 name='Histogram', 
                 marker_color=colors, 
                 showlegend=False
             ), row=row, col=col)
 
     def _add_rsi(self, fig, row, col):
-        """添加RSI指标（剔除非交易日）"""
-        # 过滤掉成交量为0或NaN的日期（非交易日）
-        if 'Volume' in self.df.columns:
-            trading_data = self.df[self.df['Volume'] > 0].copy()
-        else:
-            # 如果没有成交量数据，使用价格变化来判断交易日
-            trading_data = self.df.dropna(subset=['Close']).copy()
-        
-        if len(trading_data) > 0:
+        """添加RSI指标（使用过滤后的交易日数据）"""
+        if len(self.trading_df) > 0:
             # 简化的RSI计算
-            delta = trading_data['Close'].diff()
+            delta = self.trading_df['Close'].diff()
             gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
             loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
             rs = gain / loss
             rsi = 100 - (100 / (1 + rs))
             
             fig.add_trace(go.Scatter(
-                x=trading_data.index, y=rsi, 
+                x=self.trading_df.index, y=rsi, 
                 mode='lines', name='RSI', 
                 line=dict(color='purple', width=1)
             ), row=row, col=col)
@@ -508,35 +492,28 @@ class EnhancedChartGenerator:
             fig.add_hline(y=30, line_dash="dash", line_color="green", row=row, col=col)
 
     def _add_bollinger_bands(self, fig, row, col):
-        """添加布林带（剔除非交易日）"""
-        # 过滤掉成交量为0或NaN的日期（非交易日）
-        if 'Volume' in self.df.columns:
-            trading_data = self.df[self.df['Volume'] > 0].copy()
-        else:
-            # 如果没有成交量数据，使用价格变化来判断交易日
-            trading_data = self.df.dropna(subset=['Close']).copy()
-        
-        if len(trading_data) > 0:
+        """添加布林带（使用过滤后的交易日数据）"""
+        if len(self.trading_df) > 0:
             window = 20
-            rolling_mean = trading_data['Close'].rolling(window=window).mean()
-            rolling_std = trading_data['Close'].rolling(window=window).std()
+            rolling_mean = self.trading_df['Close'].rolling(window=window).mean()
+            rolling_std = self.trading_df['Close'].rolling(window=window).std()
             upper_band = rolling_mean + (rolling_std * 2)
             lower_band = rolling_mean - (rolling_std * 2)
             
             fig.add_trace(go.Scatter(
-                x=trading_data.index, y=upper_band, 
+                x=self.trading_df.index, y=upper_band, 
                 mode='lines', name='Upper Band', 
                 line=dict(color='gray', width=1, dash='dot')
             ), row=row, col=col)
             
             fig.add_trace(go.Scatter(
-                x=trading_data.index, y=rolling_mean, 
+                x=self.trading_df.index, y=rolling_mean, 
                 mode='lines', name='Middle Band', 
                 line=dict(color='blue', width=1)
             ), row=row, col=col)
             
             fig.add_trace(go.Scatter(
-                x=trading_data.index, y=lower_band, 
+                x=self.trading_df.index, y=lower_band, 
                 mode='lines', name='Lower Band', 
                 line=dict(color='gray', width=1, dash='dot')
             ), row=row, col=col)
