@@ -316,7 +316,7 @@ def create_app():
     # 线段和中枢
     st.sidebar.markdown("*线段和中枢*")
     show_xd = st.sidebar.checkbox("线段", value=True)
-    show_zs = st.sidebar.checkbox("中枢", value=True)
+    show_zs = st.sidebar.checkbox("中枢", value=True)  # 默认开启中枢显示
     
     # 买卖点
     st.sidebar.markdown("**买卖点**")

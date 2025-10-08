@@ -166,18 +166,11 @@ class EnhancedChartGenerator:
         if len(self.trading_df) > 0:
             x_data = self._get_x_data()
             
-            # 创建自定义悬停信息，显示完整日期
+            # 创建时间信息的悬停
             hover_text = []
             for i, (idx, row_data) in enumerate(self.trading_df.iterrows()):
                 date_str = idx.strftime('%Y-%m-%d %H:%M') if self.kline_level in ['1h', '30m', '15m', '5m', '2m', '1m'] else idx.strftime('%Y-%m-%d')
-                hover_info = f"日期: {date_str}<br>"
-                hover_info += f"开盘: {row_data['Open']:.2f}<br>"
-                hover_info += f"最高: {row_data['High']:.2f}<br>"
-                hover_info += f"最低: {row_data['Low']:.2f}<br>"
-                hover_info += f"收盘: {row_data['Close']:.2f}<br>"
-                if 'Volume' in row_data:
-                    hover_info += f"成交量: {row_data['Volume']:,.0f}"
-                hover_text.append(hover_info)
+                hover_text.append(f"时间: {date_str}")
             
             fig.add_trace(go.Candlestick(
                 x=x_data,
@@ -225,13 +218,15 @@ class EnhancedChartGenerator:
             x_data = self._get_x_data()
             for p in periods:
                 ma = self.trading_df['Close'].rolling(window=p).mean()
+                
                 fig.add_trace(go.Scatter(
                     x=x_data,
                     y=ma,
                     mode='lines',
                     name=f'MA{p}',
                     line=dict(width=1),
-                    showlegend=True
+                    showlegend=True,
+                    hoverinfo='skip'  # 不显示悬停信息
                 ), row=row, col=col)
 
     def _add_fractals(self, fig, row, col, show_top=True, show_bottom=True, show_labels=False):
@@ -271,6 +266,7 @@ class EnhancedChartGenerator:
                     text=['▼'] * len(top_indices) if show_labels else None,
                     textposition="top center",
                     showlegend=True,
+                    hoverinfo='skip',  # 不显示悬停信息
                     legendgroup='top_fractals'  # 顶分型图例组
                 ), row=row, col=col)
             
@@ -301,6 +297,7 @@ class EnhancedChartGenerator:
                     text=['▲'] * len(bottom_indices) if show_labels else None,
                     textposition="bottom center",
                     showlegend=True,
+                    hoverinfo='skip',  # 不显示悬停信息
                     legendgroup='bottom_fractals'  # 底分型图例组
                 ), row=row, col=col)
 
@@ -330,6 +327,7 @@ class EnhancedChartGenerator:
                             showlegend=not up_legend_shown,
                             text=f'向上笔{i+1}' if show_labels else None,
                             textposition="middle center",
+                            hoverinfo='skip',  # 不显示悬停信息
                             legendgroup='up_strokes'
                         ), row=row, col=col)
                         up_legend_shown = True
@@ -353,6 +351,7 @@ class EnhancedChartGenerator:
                             showlegend=not down_legend_shown,
                             text=f'向下笔{i+1}' if show_labels else None,
                             textposition="middle center",
+                            hoverinfo='skip',  # 不显示悬停信息
                             legendgroup='down_strokes'
                         ), row=row, col=col)
                         down_legend_shown = True
@@ -395,6 +394,7 @@ class EnhancedChartGenerator:
                             showlegend=(i == 0),
                             text=f'线段{i+1}' if show_labels else None,
                             textposition="middle center",
+                            hoverinfo='skip',  # 不显示悬停信息
                             legendgroup='segments'  # 线段图例组
                         ), row=row, col=col)
                         
@@ -466,6 +466,7 @@ class EnhancedChartGenerator:
                             text=[type_name.replace('买点', 'B')] if show_labels else None,
                             textposition="bottom center",
                             showlegend=show_legend,
+                            hoverinfo='skip',  # 不显示悬停信息
                             legendgroup=f'buy_{type_name}'  # 每种类型独立图例组
                         ), row=row, col=col)
                         
@@ -509,6 +510,7 @@ class EnhancedChartGenerator:
                             text=[type_name.replace('卖点', 'S')] if show_labels else None,
                             textposition="top center",
                             showlegend=show_legend,
+                            hoverinfo='skip',  # 不显示悬停信息
                             legendgroup=f'sell_{type_name}'  # 每种类型独立图例组
                         ), row=row, col=col)
                         
@@ -528,34 +530,52 @@ class EnhancedChartGenerator:
             top_dates = [div['current_bi'].fx_b.dt for div in top_divergences]
             top_prices = [div['current_bi'].fx_b.fx * 1.05 for div in top_divergences]
             
-            fig.add_trace(go.Scatter(
-                x=top_dates,
-                y=top_prices,
-                mode='markers',
-                marker=dict(symbol='x', size=16, color='red', line=dict(width=3)),
-                name='顶背驰',
-                text=['顶背驰'] * len(top_dates),
-                textposition="top center",
-                showlegend=True,
-                legendgroup='top_divergence'
-            ), row=row, col=col)
+            # 转换时间坐标为索引坐标
+            top_indices = []
+            for date in top_dates:
+                idx = self._datetime_to_index(date)
+                if idx is not None:
+                    top_indices.append(idx)
+            
+            if top_indices:
+                fig.add_trace(go.Scatter(
+                    x=top_indices,
+                    y=top_prices[:len(top_indices)],
+                    mode='markers',
+                    marker=dict(symbol='x', size=16, color='red', line=dict(width=3)),
+                    name='顶背驰',
+                    text=['顶背驰'] * len(top_indices),
+                    textposition="top center",
+                    showlegend=True,
+                    hoverinfo='skip',  # 不显示悬停信息
+                    legendgroup='top_divergence'
+                ), row=row, col=col)
         
         # 绘制底背驰  
         if bottom_divergences:
             bottom_dates = [div['current_bi'].fx_b.dt for div in bottom_divergences]
             bottom_prices = [div['current_bi'].fx_b.fx * 0.95 for div in bottom_divergences]
             
-            fig.add_trace(go.Scatter(
-                x=bottom_dates,
-                y=bottom_prices,
-                mode='markers',
-                marker=dict(symbol='x', size=16, color='green', line=dict(width=3)),
-                name='底背驰',
-                text=['底背驰'] * len(bottom_dates),
-                textposition="bottom center",
-                showlegend=True,
-                legendgroup='bottom_divergence'
-            ), row=row, col=col)
+            # 转换时间坐标为索引坐标
+            bottom_indices = []
+            for date in bottom_dates:
+                idx = self._datetime_to_index(date)
+                if idx is not None:
+                    bottom_indices.append(idx)
+            
+            if bottom_indices:
+                fig.add_trace(go.Scatter(
+                    x=bottom_indices,
+                    y=bottom_prices[:len(bottom_indices)],
+                    mode='markers',
+                    marker=dict(symbol='x', size=16, color='green', line=dict(width=3)),
+                    name='底背驰',
+                    text=['底背驰'] * len(bottom_indices),
+                    textposition="bottom center",
+                    showlegend=True,
+                    hoverinfo='skip',  # 不显示悬停信息
+                    legendgroup='bottom_divergence'
+                ), row=row, col=col)
 
     def _add_pivots(self, fig, row, col, show_labels=False):
         """添加中枢区域（使用分析结果中的中枢数据）"""
@@ -583,21 +603,21 @@ class EnhancedChartGenerator:
                     row=row, col=col
                 )
                 
-                # 添加中枢边界线
-                fig.add_hline(
-                    y=pivot['high'], 
-                    line_dash="dash", 
-                    line_color="purple", 
-                    opacity=0.6,
-                    row=row, col=col
-                )
-                fig.add_hline(
-                    y=pivot['low'], 
-                    line_dash="dash", 
-                    line_color="purple", 
-                    opacity=0.6,
-                    row=row, col=col
-                )
+                # 中枢边界线已移除（根据用户要求）
+                # fig.add_hline(
+                #     y=pivot['high'], 
+                #     line_dash="dash", 
+                #     line_color="purple", 
+                #     opacity=0.6,
+                #     row=row, col=col
+                # )
+                # fig.add_hline(
+                #     y=pivot['low'], 
+                #     line_dash="dash", 
+                #     line_color="purple", 
+                #     opacity=0.6,
+                #     row=row, col=col
+                # )
                 
                 # 添加中枢标签
                 if show_labels:
@@ -616,7 +636,7 @@ class EnhancedChartGenerator:
             # 添加到图例（只添加一次）
             if i == 0:
                 fig.add_trace(go.Scatter(
-                    x=[pivot['start_dt']],
+                    x=[start_idx],
                     y=[pivot['center']],
                     mode='markers',
                     marker=dict(
@@ -625,6 +645,7 @@ class EnhancedChartGenerator:
                     ),
                     name='中枢区域',
                     showlegend=True,
+                    hoverinfo='skip',  # 不显示悬停信息
                     legendgroup='pivots'
                 ), row=row, col=col)
 
@@ -639,32 +660,29 @@ class EnhancedChartGenerator:
             signal = macd.ewm(span=9).mean()
             histogram = macd - signal
             
-            # 创建悬停信息
-            hover_text_macd = []
-            hover_text_signal = []
+            # 只为histogram创建悬停信息（统一显示日期）
             hover_text_hist = []
             for i, (idx, row_data) in enumerate(self.trading_df.iterrows()):
                 date_str = idx.strftime('%Y-%m-%d %H:%M') if self.kline_level in ['1h', '30m', '15m', '5m', '2m', '1m'] else idx.strftime('%Y-%m-%d')
-                hover_text_macd.append(f"日期: {date_str}<br>MACD: {macd.iloc[i]:.4f}")
-                hover_text_signal.append(f"日期: {date_str}<br>Signal: {signal.iloc[i]:.4f}")
-                hover_text_hist.append(f"日期: {date_str}<br>Histogram: {histogram.iloc[i]:.4f}")
+                hover_text_hist.append(f"日期: {date_str}<br>MACD: {macd.iloc[i]:.4f}<br>Signal: {signal.iloc[i]:.4f}<br>Histogram: {histogram.iloc[i]:.4f}")
             
+            # MACD线 - 不显示悬停信息
             fig.add_trace(go.Scatter(
                 x=x_data, y=macd, 
                 mode='lines', name='MACD', 
                 line=dict(color='blue', width=1),
-                hoverinfo='text',
-                hovertext=hover_text_macd
+                hoverinfo='skip'
             ), row=row, col=col)
             
+            # Signal线 - 不显示悬停信息
             fig.add_trace(go.Scatter(
                 x=x_data, y=signal, 
                 mode='lines', name='Signal', 
                 line=dict(color='orange', width=1),
-                hoverinfo='text',
-                hovertext=hover_text_signal
+                hoverinfo='skip'
             ), row=row, col=col)
             
+            # Histogram柱状图 - 显示统一的悬停信息
             colors = ['red' if val >= 0 else 'green' for val in histogram]
             fig.add_trace(go.Bar(
                 x=x_data, y=histogram, 
@@ -733,17 +751,34 @@ class EnhancedChartGenerator:
 
     def _add_comprehensive_statistics(self, fig):
         """添加综合统计面板（单列布局）"""
-        # 获取统计数据
-        buy_sell_data = self.data.get('buy_sell_points', {})
-        buy_points = buy_sell_data.get('buy_points', [])
-        sell_points = buy_sell_data.get('sell_points', [])
+        # 直接从根级别获取买卖点数据（根据实际的数据结构）
+        buy_points = self.data.get('buy_points', [])
+        sell_points = self.data.get('sell_points', [])
         
         divergences = self.data.get('divergences', [])
         pivots = self.data.get('pivots', [])
         
+        # 修正分型数据结构
         fractals_data = self.data.get('fractals', {})
-        top_fx_count = fractals_data.get('top_count', 0)
-        bottom_fx_count = fractals_data.get('bottom_count', 0)
+        top_fractals = fractals_data.get('top_fractals', [])
+        bottom_fractals = fractals_data.get('bottom_fractals', [])
+        
+        # 如果top_fractals和bottom_fractals为空，尝试从其他结构获取
+        if not top_fractals and not bottom_fractals:
+            # 尝试从计数获取
+            top_count = fractals_data.get('top_count', 0)
+            bottom_count = fractals_data.get('bottom_count', 0)
+            # 创建虚拟列表用于计数
+            top_fractals = list(range(top_count))
+            bottom_fractals = list(range(bottom_count))
+        
+        # 额外调试：打印完整的数据结构键
+        print(f"Debug: 完整数据键: {list(self.data.keys())}")
+        if 'buy_sell_points' in self.data:
+            print(f"Debug: buy_sell_points键: {list(self.data['buy_sell_points'].keys())}")
+        
+        # 调试输出
+        print(f"Debug: 统计面板数据 - 买点:{len(buy_points)}, 卖点:{len(sell_points)}, 背驰:{len(divergences)}, 中枢:{len(pivots)}, 顶分型:{len(top_fractals)}, 底分型:{len(bottom_fractals)}")
         
         # 创建综合统计条形图
         categories = ['买点', '卖点', '顶背驰', '底背驰', '中枢', '顶分型', '底分型']
@@ -753,10 +788,12 @@ class EnhancedChartGenerator:
             len([d for d in divergences if d.get('type') == '顶背驰']),
             len([d for d in divergences if d.get('type') == '底背驰']),
             len(pivots),
-            top_fx_count,
-            bottom_fx_count
+            len(top_fractals),
+            len(bottom_fractals)
         ]
         colors = ['green', 'red', 'red', 'green', 'purple', 'red', 'green']
+        
+        print(f"Debug: 统计面板值: {values}")  # 调试输出
         
         fig.add_trace(go.Bar(
             x=categories,
@@ -765,8 +802,20 @@ class EnhancedChartGenerator:
             text=values,
             textposition='auto',
             name='统计信息',
-            showlegend=False
+            showlegend=False,
+            hoverinfo='x+y',
+            hovertemplate='%{x}: %{y}<extra></extra>'
         ), row=4, col=1)
+        
+        # 确保统计面板的Y轴范围正确显示
+        max_value = max(values) if values else 1
+        fig.update_yaxes(range=[0, max_value * 1.1], row=4, col=1)
+        
+        # 强制设置统计面板的标题和可见性
+        fig.update_yaxes(title_text="数量", row=4, col=1)
+        fig.update_xaxes(title_text="统计项目", row=4, col=1)
+        
+        print(f"Debug: 统计面板图表已添加到第4行第1列，Y轴范围: [0, {max_value * 1.1}]")
 
     def create_interactive_chart(self, display_options):
         """
@@ -777,10 +826,10 @@ class EnhancedChartGenerator:
         # 创建专业布局：主图 + 成交量 + MACD + 统计面板
         fig = make_subplots(
             rows=4, cols=1,  # 简化为单列布局，确保十字线能正确跨图显示
-            shared_xaxes=True,  # 确保X轴完全共享
+            shared_xaxes=True,  # 前三个子图共享X轴
             shared_yaxes=False,  # Y轴不共享
             vertical_spacing=0.02,  # 减小垂直间距，让图表更紧凑
-            row_heights=[0.5, 0.2, 0.2, 0.1],  # 主图、成交量、MACD、统计
+            row_heights=[0.4, 0.2, 0.2, 0.2],  # 主图、成交量、MACD、统计（增加统计面板高度）
             subplot_titles=[
                 f"{self.stock_code} ({self.data.get('stock_name', self.stock_code)}) 缠论技术分析图",
                 "成交量", "MACD指标", "统计面板"
@@ -826,7 +875,8 @@ class EnhancedChartGenerator:
                                     show_labels=True)
         if display_options.get('show_divergence'):
             self._add_divergence(fig, 1, 1)
-        if display_options.get('show_zs'):
+        # 中枢显示（可选，默认不显示以保持图表清洁）
+        if display_options.get('show_zs', False):  # 默认关闭中枢显示
             self._add_pivots(fig, 1, 1, show_labels=True)
         if display_options.get('show_boll'):
             self._add_bollinger_bands(fig, 1, 1)
@@ -840,7 +890,14 @@ class EnhancedChartGenerator:
             self._add_macd(fig, 3, 1)
 
         # 第4行：统计面板（简化为单个综合统计图）
-        self._add_comprehensive_statistics(fig)
+        try:
+            print("Debug: 开始添加统计面板...")
+            self._add_comprehensive_statistics(fig)
+            print("Debug: 统计面板添加完成")
+        except Exception as e:
+            print(f"Debug: 统计面板添加失败: {e}")
+            import traceback
+            traceback.print_exc()
 
         # 更新坐标轴
         fig.update_yaxes(title_text="价格 (元)", row=1, col=1)
@@ -848,9 +905,9 @@ class EnhancedChartGenerator:
         fig.update_yaxes(title_text="MACD", row=3, col=1)
         fig.update_yaxes(title_text="统计", row=4, col=1)
 
-        # 设置专业的布局样式 - 强化跨图光标
+        # 设置专业的布局样式 - 优化用户体验
         fig.update_layout(
-            height=1100,  # 增加高度以容纳统计面板和图例说明
+            height=1100,
             showlegend=True,
             legend=dict(
                 orientation="h",
@@ -861,35 +918,31 @@ class EnhancedChartGenerator:
                 borderwidth=1
             ),
             template="plotly_white",
-            margin=dict(t=80, b=120, l=60, r=60),  # 增加底部边距以容纳图例说明
+            margin=dict(t=80, b=120, l=60, r=60),
             font=dict(size=10),
             title_font_size=16,
-            hovermode="x unified",  # 统一悬停模式，所有子图同步显示
-            # 去掉范围选择器，保持专业外观
+            # 核心改进：使用closest模式，时间信息显示在空白处
+            hovermode="closest",  # 只显示最接近的数据点，时间信息不遮挡
             xaxis_rangeslider_visible=False,
-            # 优化拖拽和光标交互
-            dragmode='pan',  # 默认拖拽模式
-            # 增强光标交互体验
-            hoverdistance=100,  # 增加悬停检测距离
-            spikedistance=1000,  # 增加十字线检测距离
-            # 强制启用跨子图的十字线
-            hoversubplots="axis",  # 关键设置：启用跨子图悬停
+            dragmode='pan',
+            # 增强交互响应
+            hoverdistance=50,  # 减小距离，提高精确度
+            spikedistance=200,  # 适中的检测距离
         )
         
-        # 为所有子图添加统一光标配置
+        # 为所有子图添加统一光标配置 - 清理无用hovertext
         # 注意：Candlestick不支持connectgaps属性，只对line traces有效
         fig.update_traces(
             selector=dict(type='scatter'),
             line=dict(width=1),
             connectgaps=False,
-            # 增强悬停效果
-            hovertemplate='<extra></extra>%{hovertext}',  # 简化悬停框
+            # 移除无用的hovertemplate，使用默认的悬停信息
         )
         
-        # 为柱状图添加特殊的悬停配置
+        # 为柱状图添加清洁的悬停配置
         fig.update_traces(
             selector=dict(type='bar'),
-            hovertemplate='<extra></extra>%{hovertext}',  # 简化悬停框
+            # 移除无用的hovertemplate，使用默认的悬停信息
         )
         
         # 配置时间轴 - 使用序号避免间隙，但显示月份标识
@@ -917,11 +970,11 @@ class EnhancedChartGenerator:
             month_positions.append(data_count - 1)
             month_labels.append(time_indices[-1].strftime('%m月'))
         
-        # 配置X轴 - 强制跨图十字线显示
+        # 配置X轴 - 实用的十字线显示（前三个子图）
         fig.update_xaxes(
-            type='linear',  # 使用数字序号
-            tickangle=0,  # 水平显示
-            showgrid=False,  # 去掉网格线
+            type='linear',
+            tickangle=0,
+            showgrid=False,
             tickmode='array',
             tickvals=month_positions,
             ticktext=month_labels,
@@ -929,40 +982,49 @@ class EnhancedChartGenerator:
             showline=True,
             linewidth=1,
             linecolor='#e0e0e0',
-            # 强制设置相同的X轴范围
             range=[0, data_count - 1],
-            # 强化的十字线配置 - 垂直线
-            showspikes=True,  # 显示垂直十字线
-            spikecolor="rgba(255,0,0,0.8)",  # 更明显的红色
-            spikesnap="cursor",  # 跟随光标
-            spikemode="toaxis+across",  # 十字线穿过所有子图并延伸到轴
-            spikethickness=3,  # 进一步增加线条粗细
-            spikedash="solid",  # 实线
-            # 确保所有子图X轴同步
-            matches='x'
+            # 实用的十字线配置
+            showspikes=True,
+            spikecolor="rgba(100,100,100,0.7)",  # 适中的灰色
+            spikesnap="cursor",
+            spikemode="across",  # 跨图显示
+            spikethickness=1,  # 适中粗细
+            spikedash="dash",  # 虚线更专业
+            matches='x',
+            row=[1, 2, 3]  # 只应用于前三个子图
         )
         
-        # 配置Y轴 - 强化光标效果
-        fig.update_yaxes(
-            showgrid=False,  # 去掉网格线
+        # 统计面板的X轴配置（独立）
+        fig.update_xaxes(
+            showgrid=False,
             showline=True,
             linewidth=1,
             linecolor='#e0e0e0',
             tickfont=dict(size=10, color='#666666'),
-            # 强化的十字线配置 - 水平线
-            showspikes=True,  # 显示水平十字线
-            spikecolor="rgba(255,0,0,0.8)",  # 更明显的红色
-            spikesnap="cursor",  # 跟随光标
-            spikemode="toaxis+across",  # 十字线穿过所有子图并延伸到轴
-            spikethickness=3,  # 进一步增加线条粗细
-            spikedash="solid"  # 实线
+            row=4, col=1  # 只应用于统计面板
+        )
+        
+        # 配置Y轴 - 实用的十字线显示
+        fig.update_yaxes(
+            showgrid=False,
+            showline=True,
+            linewidth=1,
+            linecolor='#e0e0e0',
+            tickfont=dict(size=10, color='#666666'),
+            # 实用的十字线配置
+            showspikes=True,
+            spikecolor="rgba(100,100,100,0.7)",  # 适中的灰色
+            spikesnap="cursor",
+            spikemode="across",  # 跨图显示
+            spikethickness=1,  # 适中粗细
+            spikedash="dash"  # 虚线更专业
         )
         fig.add_annotation(
-            text="缠论技术分析图例说明:",
+            text="📊 使用说明: 将鼠标悬停在任意位置，统一显示所有图表的对应数据 | 虚线十字光标辅助定位",
             xref="paper", yref="paper",
             x=0.01, y=-0.05,
             showarrow=False,
-            font=dict(size=11, color="black", family="Arial Bold"),
+            font=dict(size=10, color="blue", family="Arial"),
             align="left"
         )
         
