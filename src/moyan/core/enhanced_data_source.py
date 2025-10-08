@@ -195,13 +195,13 @@ class YFinanceDataSource(DataSourceBase):
     
     def _fetch_data(self, symbol: str, **kwargs) -> Optional[pd.DataFrame]:
         """使用yfinance获取股票数据，带重试机制"""
-        max_retries = 2
-        base_delay = 1
+        max_retries = 3  # 增加重试次数
+        base_delay = 5   # 增加基础延迟到5秒
         
         for attempt in range(max_retries):
             try:
                 if attempt > 0:
-                    delay = base_delay * (2 ** (attempt - 1))
+                    delay = base_delay * (2 ** (attempt - 1))  # 指数退避：5s, 10s, 20s
                     print(f"⏳ yfinance第{attempt + 1}次尝试，延迟{delay}秒...")
                     time.sleep(delay)
                 
@@ -209,15 +209,26 @@ class YFinanceDataSource(DataSourceBase):
                 data = ticker.history(**kwargs)
                 
                 if data is not None and len(data) > 0:
+                    print(f"✅ yfinance成功获取 {len(data)} 条数据")
                     return data
+                else:
+                    print(f"⚠️ yfinance第{attempt + 1}次尝试未获取到数据")
                     
             except Exception as e:
                 error_msg = str(e).lower()
                 if "rate limit" in error_msg or "too many requests" in error_msg:
+                    print(f"⚠️ yfinance第{attempt + 1}次尝试遇到限流: {e}")
                     if attempt < max_retries - 1:
                         continue
-                raise e
+                    else:
+                        print("❌ yfinance所有重试均因限流失败")
+                        return None
+                else:
+                    print(f"❌ yfinance遇到其他错误: {e}")
+                    # 其他非限流错误直接退出
+                    return None
         
+        print("❌ yfinance所有重试均失败")
         return None
 
 class TushareDataSource(DataSourceBase):
@@ -328,6 +339,9 @@ class MultiDataSourceManager:
         ordered_sources = self._get_ordered_sources_by_kline_level(kline_level)
         
         # 按优先级尝试各个数据源
+        last_error_msg = ""
+        minute_level_failed = False
+        
         for i, data_source in enumerate(ordered_sources):
             if not data_source.is_available():
                 print(f"⚠️ 跳过不可用的数据源: {data_source.name}")
@@ -358,13 +372,26 @@ class MultiDataSourceManager:
                     return data, data_source.name
                 else:
                     print(f"⚠️ {data_source.name} 未获取到数据")
+                    if data_source.name == "yfinance" and kline_level in ['15m', '30m', '1h', '5m', '2m', '1m']:
+                        minute_level_failed = True
+                        last_error_msg = f"{data_source.name}分钟级别数据获取失败"
                     
             except Exception as e:
-                print(f"❌ {data_source.name} 获取失败: {e}")
+                error_msg = f"{data_source.name} 获取失败: {e}"
+                print(f"❌ {error_msg}")
+                if data_source.name == "yfinance" and kline_level in ['15m', '30m', '1h', '5m', '2m', '1m']:
+                    minute_level_failed = True
+                    last_error_msg = error_msg
                 
             # 如果不启用容错，第一个失败就停止
             if not self.fallback_enabled:
                 break
+        
+        # 如果是分钟级别数据获取失败，给出特别提示
+        if minute_level_failed and kline_level in ['15m', '30m', '1h', '5m', '2m', '1m']:
+            print(f"❌ 分钟级别数据({kline_level})获取失败")
+            print(f"💡 建议: 1) 稍后重试 2) 使用日线数据 3) 检查网络连接")
+            print(f"📝 错误详情: {last_error_msg}")
         
         print("❌ 所有数据源均失败")
         return None, "none"

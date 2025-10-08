@@ -368,12 +368,25 @@ def create_app():
                     else:
                         # 使用真实数据
                         analyzer = MoyanAnalyzer(kline_level=kline_level)
+                        
+                        # 特别处理分钟级别数据
+                        if kline_level in ['15m', '30m', '1h', '5m', '2m', '1m']:
+                            st.info(f"🔄 正在获取{kline_level}级别数据，可能需要较长时间...")
+                            st.info("💡 如果获取失败，系统会自动降级为日线数据")
+                        
                         result = analyzer.analyze(
                             stock_code=stock_code,
                             start_date=start_date_str,
                             end_date=end_date_str,
                             days=days_input
                         )
+                        
+                        # 检查实际获取的数据类型
+                        if result['success'] and 'kline_name' in result:
+                            actual_kline = result.get('kline_level', kline_level)
+                            if actual_kline != kline_level:
+                                st.warning(f"⚠️ 注意：请求{kline_level}级别数据，但实际获取到{actual_kline}级别数据")
+                                st.info("🔍 这通常是由于数据源限制导致的降级处理")
                     
                     if result['success']:
                         st.success("✅ 分析完成！")
